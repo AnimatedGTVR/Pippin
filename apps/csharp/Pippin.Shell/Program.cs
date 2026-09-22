@@ -113,6 +113,9 @@ internal sealed class HostBridge(string socketPath, Application[] clients)
     private readonly Channel<string> incoming = Channel.CreateUnbounded<string>();
     private StreamWriter? writer;
     private bool alternateWallpaper;
+    private bool dockVisible = true;
+    private bool notificationsEnabled = true;
+    private bool animationsEnabled = true;
 
     public async Task RunAsync()
     {
@@ -166,12 +169,34 @@ internal sealed class HostBridge(string socketPath, Application[] clients)
             case "launcher.open": await ShowAsync("launcher"); break;
             case "settings.open": await ShowAsync("settings"); break;
             case "files.open": await ShowAsync("files"); break;
+            case "settings.animations.toggle":
+                animationsEnabled = !animationsEnabled;
+                await ShowStatusAsync("Animations " + (animationsEnabled ? "on" : "off"));
+                break;
+            case "settings.dock.toggle":
+                dockVisible = !dockVisible;
+                if (dockVisible) await ShowAsync("dock"); else await SendAsync("X|dock");
+                break;
+            case "settings.notifications.toggle":
+                notificationsEnabled = !notificationsEnabled;
+                if (notificationsEnabled) await ShowAsync("notifications"); else await SendAsync("X|notifications");
+                break;
+            case "files.documents.open": await ShowStatusAsync("Documents"); break;
+            case "files.downloads.open": await ShowStatusAsync("Downloads"); break;
+            case "launcher.search": await ShowStatusAsync("App search ready"); break;
+            case "files.search": await ShowStatusAsync("File search ready"); break;
             case "wallpaper.select.gradient":
                 alternateWallpaper = !alternateWallpaper;
                 await SendAsync("S|wallpaper|B|0|0|800|600|" +
                     (alternateWallpaper ? "#4b4f63" : "#263746") + "|");
                 break;
         }
+    }
+
+    private async Task ShowStatusAsync(string message)
+    {
+        if (!notificationsEnabled) return;
+        await SendAsync("S|notifications|N|482|48|300|96|Notifications|" + Safe(message) + "@");
     }
 
     private async Task ShowAsync(string name)
