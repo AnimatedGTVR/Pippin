@@ -2,13 +2,18 @@
 BUILD_DIR ?= build
 QEMU_MODE ?= --defaultqemu
 
-.PHONY: all kernel run run-shell run-ui run-headless run-gdb run-disk disk iso clean distclean
+.PHONY: all preflight specs kernel run run-shell run-ui run-headless run-gdb run-disk disk iso clean distclean
 
 all: kernel
 
-kernel:
+preflight:
+	BUILD_DIR="$(abspath $(BUILD_DIR))" bash scripts/preflight.sh
+
+specs: preflight
+
+kernel: preflight
 	cmake -S . -B $(BUILD_DIR) -G "Unix Makefiles"
-	cmake --build $(BUILD_DIR) --target kernel.elf -j
+	bash -c 'source "$(BUILD_DIR)/pippin-limits.env"; cmake --build "$(BUILD_DIR)" --target kernel.elf -j"$PIPPIN_BUILD_JOBS"'
 
 run: kernel
 	dotnet build apps/csharp/Pippin.Shell/Pippin.Shell.csproj
