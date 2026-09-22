@@ -57,7 +57,7 @@ impl Compositor {
         let mut compositor = Self {
             pixels: vec![0; WIDTH * HEIGHT], clients: WindowServer::new(),
             windows: Vec::new(), next_id: 1,
-            wallpaper_base: 0x00142b42,
+            wallpaper_base: 0x002f80ed,
             cursor_x: (WIDTH / 2) as i32, cursor_y: (HEIGHT / 2) as i32,
             left_down: false, drag: None,
         };
@@ -94,7 +94,7 @@ impl Compositor {
         }
         if let Some(id) = line.strip_prefix("X|") {
             self.windows.retain(|window| window.id != id);
-            if id == "wallpaper" { self.wallpaper_base = 0x00142b42; }
+            if id == "wallpaper" { self.wallpaper_base = 0x002f80ed; }
             self.render();
             return;
         }
@@ -249,26 +249,10 @@ impl Compositor {
     }
 
     fn wallpaper(&mut self) {
-        for y in 0..HEIGHT {
-            let t = y as u32;
-            let red = ((self.wallpaper_base >> 16) & 255) + t * 22 / HEIGHT as u32;
-            let green = ((self.wallpaper_base >> 8) & 255) + t * 63 / HEIGHT as u32;
-            let blue = (self.wallpaper_base & 255) + t * 59 / HEIGHT as u32;
-            let color = (red.min(255) << 16) | (green.min(255) << 8) | blue.min(255);
-            self.pixels[y * WIDTH..(y + 1) * WIDTH].fill(color);
-        }
-        // Quiet geometric forms keep the wallpaper useful behind app windows.
-        for y in 0..HEIGHT as i32 {
-            for x in 0..WIDTH as i32 {
-                if y > 390 + (x - 300).abs() / 5 {
-                    self.set_pixel(x, y, 0x002f6871);
-                }
-                if y > 490 + (x - 610).abs() / 7 {
-                    self.set_pixel(x, y, 0x003b7a7a);
-                }
-            }
-        }
-        self.fill_rect(0, HEIGHT as i32 - 12, WIDTH as i32, 12, 0x00224252);
+        // The desktop background is intentionally simple: one clean Pippin blue.
+        // Shell surfaces, windows, controls, dock, launcher and notifications provide
+        // the visual structure instead of baking decoration into the wallpaper.
+        self.pixels.fill(self.wallpaper_base);
     }
 
     fn window(&mut self, window: Window, focused: bool) {
