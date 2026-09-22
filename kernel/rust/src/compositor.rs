@@ -35,6 +35,8 @@ struct Window {
     title: String,
     rows: Vec<Row>,
     native: bool,
+    maximized: bool,
+    restore: Option<(i32, i32, i32, i32)>,
 }
 
 pub struct Compositor {
@@ -72,7 +74,7 @@ impl Compositor {
             width: 440, height: 300, title: "WINDOW TEST".to_string(),
             rows: vec![Row { text: "RUST COMPOSITOR".to_string(), action: String::new(), kind: b'l' },
                        Row { text: "DRAG TITLE BAR".to_string(), action: String::new(), kind: b'l' }],
-            native: true,
+            native: true, maximized: false, restore: None,
         });
         self.next_id = self.next_id.wrapping_add(1).max(1);
         self.render();
@@ -118,7 +120,8 @@ impl Compositor {
         self.windows.retain(|window| window.id != id);
         if self.windows.len() >= MAX_WINDOWS { return; }
         self.windows.push(Window { id: id.to_string(), role, x, y, width, height,
-                                   title: title.to_string(), rows: parsed_rows, native: false });
+                                   title: title.to_string(), rows: parsed_rows, native: false,
+                                   maximized: false, restore: None });
         self.render();
     }
 
@@ -165,11 +168,32 @@ impl Compositor {
             self.cursor_x >= window.x && self.cursor_x < window.x + window.width
                 && self.cursor_y >= window.y && self.cursor_y < window.y + window.height
         }) else { return None; };
-        let window = self.windows.remove(index);
-        if matches!(window.role, b'W' | b'L')
-            && self.cursor_x >= window.x + 15 && self.cursor_x < window.x + 33
-            && self.cursor_y >= window.y + 14 && self.cursor_y < window.y + 32 {
-            return if window.native { None } else { Some(alloc::format!("{}.close", window.id)) };
+        let mut window = self.windows.remove(index);
+        if matches!(window.role, b'W' | b'L') && self.cursor_y >= window.y + 14 && self.cursor_y < window.y + 32 {
+            let control = self.cursor_x - (window.x + 15);
+            if (0..18).contains(&control) {
+                return if window.native { None } else { Some(alloc::format!("{}.close", window.id)) };
+            }
+            if (29..47).contains(&control) {
+                let id = window.id.clone();
+                self.windows.push(window);
+                return if id.starts_with("native") { None } else { Some(alloc::format!("{}.close", id)) };
+            }
+            if (58..76).contains(&control) {
+                if window.maximized {
+                    if let Some((x, y, width, height)) = window.restore.take() {
+                        window.x = x; window.y = y; window.width = width; window.height = height;
+                    }
+                    window.maximized = false;
+                } else {
+                    window.restore = Some((window.x, window.y, window.width, window.height));
+                    window.x = 8; window.y = 58;
+                    window.width = WIDTH as i32 - 16; window.height = HEIGHT as i32 - 116;
+                    window.maximized = true;
+                }
+                self.windows.push(window);
+                return None;
+            }
         }
         let row_top = if matches!(window.role, b'P' | b'D') { 7 } else { 62 };
         let row_step = if matches!(window.role, b'P' | b'D') { 118 } else { 42 };
