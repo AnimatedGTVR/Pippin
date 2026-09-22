@@ -383,6 +383,10 @@ constexpr Node proxy(const Node& child, Insets insets) {
     };
 }
 
+// A Proxy stores a pointer to its child, so accepting a temporary would leave
+// it dangling as soon as the full expression ends.
+constexpr Node proxy(Node&&, Insets) = delete;
+
 // Node sizing decorators use the same vocabulary as ControlSpec decorators.
 // They modify the node's relationship with its parent, not its descendants.
 constexpr Node fixed(Node node, int32_t basis) {
@@ -407,8 +411,10 @@ template <size_t N>
 struct TreeLayout {
     Control items[N]{};
     size_t count{};
+    bool overflow{};
 
     constexpr size_t size() const { return count; }
+    constexpr bool valid() const { return !overflow; }
     constexpr const Control* data() const { return items; }
     constexpr const Control& operator[](size_t index) const { return items[index]; }
 };
@@ -452,6 +458,8 @@ constexpr void layoutNode(const Node& node, Rect frame,
                 node.control.flags,
                 frame,
             };
+        } else {
+            out.overflow = true;
         }
         return;
     }
