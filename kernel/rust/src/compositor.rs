@@ -512,11 +512,11 @@ impl Compositor {
             return (false, None);
         };
 
-        let action = self.windows.iter()
+        let (action, kind) = self.windows.iter()
             .find(|window| window.id == window_id)
             .and_then(|window| window.rows.get(row_index))
-            .map(|row| row.action.clone())
-            .unwrap_or_default();
+            .map(|row| (row.action.clone(), row.kind))
+            .unwrap_or_else(|| (String::new(), 0));
 
         let edit_index = self.ensure_edit_state(&window_id, row_index);
         let edit = &mut self.edits[edit_index];
@@ -558,6 +558,7 @@ impl Compositor {
                 (true, None)
             }
             0x1c => { // Enter submits the field value.
+                let submitted = edit.value.clone();
                 let payload = if action.is_empty() {
                     None
                 } else {
@@ -565,9 +566,16 @@ impl Compositor {
                         "{}{}{}",
                         action,
                         ACTION_VALUE_SEPARATOR,
-                        edit.value
+                        submitted
                     ))
                 };
+
+                // Command-style text fields clear after submission; search
+                // controls retain the current query.
+                if kind == b'e' {
+                    edit.value.clear();
+                    edit.cursor = 0;
+                }
                 (true, payload)
             }
             _ => {
