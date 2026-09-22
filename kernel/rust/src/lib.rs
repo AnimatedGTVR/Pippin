@@ -283,7 +283,7 @@ fn core_main(mb_info: Option<u32>) -> ! {
     let _ = zones::free(handle);
 
     let _ = writeln!(console, "Pippin command shell ready.");
-    let mut shell = cli::Shell::new(console, loaded_bundle);
+    let mut shell = cli::Shell::new(console, loaded_bundle, port);
     loop {
         let _ = ps2::poll(port);
         shell.poll_serial();
