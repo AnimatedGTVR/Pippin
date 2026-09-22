@@ -20,19 +20,22 @@ public sealed class Panel : Application
 {
     public override string Id => "org.pippin.panel";
     public override IEnumerable<Surface> CreateSurfaces() =>
-        [new("panel", SurfaceRole.Panel, "Panel", 10, 10, 780, 40,
+        [new("panel", SurfaceRole.Panel, "Panel", 0, 0, 800, 44,
             UiNode.Row(UiNode.Button("Pippin", "launcher.open"),
-                UiNode.Label("Pippin Desktop"), UiNode.Button("Settings", "settings.open")))];
+                UiNode.Button("Apps", "launcher.open"),
+                UiNode.Button("Files", "files.open"),
+                UiNode.Button("Settings", "settings.open"),
+                UiNode.Label("WiFi  Sound  Battery")))];
 }
 
 public sealed class Dock : Application
 {
     public override string Id => "org.pippin.dock";
     public override IEnumerable<Surface> CreateSurfaces() =>
-        [new("dock", SurfaceRole.Dock, "Dock", 202, 536, 396, 54,
-            UiNode.Row(UiNode.Button("Files", "files.restore"),
-                UiNode.Button("Settings", "settings.restore"),
-                UiNode.Button("Apps", "launcher.restore")))];
+        [new("dock", SurfaceRole.Dock, "Dock", 218, 532, 364, 58,
+            UiNode.Row(UiNode.Button("Apps", "launcher.restore"),
+                UiNode.Button("Files", "files.restore"),
+                UiNode.Button("Settings", "settings.restore")))];
 }
 
 public sealed class Launcher : Application
@@ -79,7 +82,7 @@ public sealed class Notifications : Application
 {
     public override string Id => "org.pippin.notifications";
     public override IEnumerable<Surface> CreateSurfaces() =>
-        [new("notifications", SurfaceRole.Notification, "Notifications", 482, 48, 300, 96,
+        [new("notifications", SurfaceRole.Notification, "Notifications", 488, 54, 300, 96,
             UiNode.Label("Welcome to Pippin"))];
 }
 
