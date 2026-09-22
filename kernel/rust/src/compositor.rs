@@ -248,6 +248,7 @@ impl Compositor {
         }
         if let Some(id) = line.strip_prefix("X|") {
             self.windows.retain(|window| window.id != id);
+            self.edits.retain(|edit| edit.window_id != id);
             if id == "wallpaper" { self.wallpaper_base = 0x002f80ed; }
             self.repair_focus_scope();
             self.render();
@@ -294,6 +295,7 @@ impl Compositor {
         }
 
         if let Some(index) = self.windows.iter().position(|window| window.id == id) {
+            self.edits.retain(|edit| edit.window_id != id);
             let mut window = self.windows.remove(index);
             window.role = role;
             window.x = x;
@@ -879,7 +881,8 @@ impl Compositor {
         let window = self.windows.iter()
             .find(|window| !window.minimized && &window.id == id)?;
         let row = window.rows.get(*index)?;
-        if row.flags & CONTROL_FLAG_DISABLED != 0 || row.action.is_empty() {
+        if row.flags & CONTROL_FLAG_DISABLED != 0 || row.action.is_empty()
+            || Self::row_is_editable(row) {
             return None;
         }
         Some(row.action.clone())
@@ -983,8 +986,21 @@ impl Compositor {
                 if control.flags & CONTROL_FLAG_DISABLED == 0
                     && control.flags & CONTROL_FLAG_FOCUSABLE != 0 {
                     self.focused_control = Some((window.id.clone(), row));
+
+                    if Self::row_is_editable(control) {
+                        self.place_edit_cursor(
+                            &window.id,
+                            row,
+                            local_x - control.x,
+                            control.width,
+                        );
+                    }
+                } else {
+                    self.focused_control = None;
                 }
             }
+        } else {
+            self.focused_control = None;
         }
 
         if matches!(window.role, b'W' | b'L')
