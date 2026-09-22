@@ -13,6 +13,13 @@ extern "C" {
 
     /// Number of drivers registered with the Driver Manager (C++ side).
     fn pippin_driver_count() -> u32;
+    fn pippin_driver_probe_all() -> u32;
+    fn pippin_pci_device_count() -> u32;
+    fn pippin_pci_parent(index: u32) -> i32;
+    fn pippin_pci_device(index: u32, vendor: *mut u16, product: *mut u16,
+                         class_code: *mut u8, subclass: *mut u8) -> bool;
+    fn pippin_ahci_bar() -> u64;
+    fn pippin_qemu_vga_bar() -> u64;
 }
 
 /// Read the C-string version banner exported by the C++ runtime.
@@ -22,10 +29,22 @@ pub fn cpp_version() -> &'static str {
     unsafe { cstr_to_str(pippin_cpp_version()) }
 }
 
-/// Query the (currently zero) driver count.
+/// Query the initialized driver count.
 pub fn driver_count() -> u32 {
     // SAFETY: trivially safe C call.
     unsafe { pippin_driver_count() }
+}
+
+pub fn probe_drivers() -> u32 { unsafe { pippin_driver_probe_all() } }
+pub fn pci_device_count() -> u32 { unsafe { pippin_pci_device_count() } }
+pub fn pci_parent(index: u32) -> i32 { unsafe { pippin_pci_parent(index) } }
+pub fn ahci_bar() -> u64 { unsafe { pippin_ahci_bar() } }
+pub fn qemu_vga_bar() -> u64 { unsafe { pippin_qemu_vga_bar() } }
+pub fn pci_device(index: u32) -> Option<(u16, u16, u8, u8)> {
+    let (mut vendor, mut product, mut class, mut subclass) = (0, 0, 0, 0);
+    if unsafe { pippin_pci_device(index, &mut vendor, &mut product, &mut class, &mut subclass) } {
+        Some((vendor, product, class, subclass))
+    } else { None }
 }
 
 /// Convert a borrowed, NUL-terminated C string to `&str`.

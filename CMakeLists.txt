@@ -10,7 +10,7 @@
 #
 # The driver layer stays in this build until app-land exists; turn on
 # PIPPIN_BUILD_APPS at Milestone 5 to add native C++ and Rust applications.
-# Optional C# application support may follow on the x86-64 desktop.
+# C# shell projects build separately with the host .NET SDK until guest runtime support exists.
 
 cmake_minimum_required(VERSION 3.20)
 project(Pippin VERSION 0.1.0 LANGUAGES ASM C CXX)
@@ -65,9 +65,18 @@ add_custom_command(
     "${PIPPIN_RUST_CRATE_DIR}/Cargo.toml"
     "${PIPPIN_RUST_CRATE_DIR}/src/lib.rs"
     "${PIPPIN_RUST_CRATE_DIR}/src/apic.rs"
+    "${PIPPIN_RUST_CRATE_DIR}/src/acpi.rs"
+    "${PIPPIN_RUST_CRATE_DIR}/src/ahci.rs"
+    "${PIPPIN_RUST_CRATE_DIR}/src/cli.rs"
+    "${PIPPIN_RUST_CRATE_DIR}/src/compositor.rs"
+    "${PIPPIN_RUST_CRATE_DIR}/src/bridge.rs"
+    "${PIPPIN_RUST_CRATE_DIR}/src/window_server.rs"
     "${PIPPIN_RUST_CRATE_DIR}/src/cpu.rs"
+    "${PIPPIN_RUST_CRATE_DIR}/src/display.rs"
+    "${PIPPIN_RUST_CRATE_DIR}/src/desktop.rs"
     "${PIPPIN_RUST_CRATE_DIR}/src/ffi.rs"
     "${PIPPIN_RUST_CRATE_DIR}/src/event.rs"
+    "${PIPPIN_RUST_CRATE_DIR}/src/file.rs"
     "${PIPPIN_RUST_CRATE_DIR}/src/gdt.rs"
     "${PIPPIN_RUST_CRATE_DIR}/src/heap.rs"
     "${PIPPIN_RUST_CRATE_DIR}/src/idt.rs"
@@ -75,6 +84,7 @@ add_custom_command(
     "${PIPPIN_RUST_CRATE_DIR}/src/ipc.rs"
     "${PIPPIN_RUST_CRATE_DIR}/src/mem.rs"
     "${PIPPIN_RUST_CRATE_DIR}/src/mm.rs"
+    "${PIPPIN_RUST_CRATE_DIR}/src/ps2.rs"
     "${PIPPIN_RUST_CRATE_DIR}/src/serial.rs"
     "${PIPPIN_RUST_CRATE_DIR}/src/sched.rs"
     "${PIPPIN_RUST_CRATE_DIR}/src/syscall.rs"

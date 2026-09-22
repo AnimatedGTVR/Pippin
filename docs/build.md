@@ -18,6 +18,7 @@ This mandatory set, in the form installed on the current machine:
 | `make`          | 4.3                  | top-level targets               |
 | `bash`          | host shell           | QEMU and ISO helper scripts     |
 | `qemu-system-x86_64` | 8.2 (optional)  | boot the OS without real HW     |
+| `.NET SDK` | 8.0 (for M4.5) | build and run the host C# shell |
 | Limine + `xorriso` | Limine 12.9 / xorriso 1.5.6 tested | hybrid BIOS/UEFI ISO |
 
 `gcc` is used both as the C/C++ compiler and as the assembler driver
@@ -31,10 +32,14 @@ builds.
 
 ```sh
 make            # configure + compile build/kernel.elf (Multiboot)
-make run        # direct Multiboot boot in QEMU, serial to terminal
+make run        # Multiboot boot in a QEMU window; serial log in terminal
+make run-shell  # QEMU window with interactive C# shell surfaces
+make run-ui     # two independent C# app processes and window broker
+make run-headless # serial console only (also works without a desktop session)
+make run-disk   # QEMU window with the FAT32 Hello bundle disk
 make run-gdb    # QEMU paused, GDB stub on :1234
 make iso        # build build/kernel-limine.elf and build/pippin.iso
-qemu-system-x86_64 -machine q35 -m 256M -display none -serial stdio -cdrom build/pippin.iso
+qemu-system-x86_64 -machine q35 -m 256M -display gtk -serial stdio -cdrom build/pippin.iso
 make clean      # rm build/
 make distclean  # also wipe the cargo target dir
 ```
@@ -44,9 +49,31 @@ or raw CMake:
 ```sh
 cmake -S . -B build -G "Unix Makefiles"
 cmake --build build --target kernel.elf -j
-qemu-system-x86_64 -machine q35 -m 256M -display none -serial stdio \
+qemu-system-x86_64 -machine q35 -m 256M -display gtk -serial stdio \
     -kernel build/kernel.elf
 ```
+
+`make run` opens QEMU's VGA window and shows the boot log there as it runs.
+The latest lines remain above the `pippin>` command prompt. Click the window
+to type, then try `fetch`, `desktop`, `help`, `mem`, or `pci`. `desktop` shows the
+M4 graphics preview; press Esc to return to the prompt. The terminal keeps the full serial
+log and also accepts shell commands. Close the QEMU window or press
+Ctrl+C in the terminal to stop it. For a terminal-only session, use
+`make run-headless`. This command shell is an M4 bootstrap interface; the
+graphical desktop and movable windows are still under development.
+
+`make run-shell` builds the .NET shell, boots QEMU, and connects the host C#
+process to COM2 through a Unix socket. The C# process sends surfaces and
+handles clicks; Rust composes the pixels in QEMU. The C# process runs on the
+host, since Pippin does not yet have a managed guest runtime. The shell
+automatically enters graphics mode after the connection is ready.
+
+`make run-ui` builds the window broker, low-level C# client API, GUI toolkit,
+and two example applications. About and Task Manager run as separate host
+processes. They create normal Pippin windows, submit their own pixels, and
+receive input/window events. The broker connects them to the Rust compositor
+over COM2. The apps still run on the host, not inside the guest. A QEMU
+monitor socket is available at `build/pippin-monitor.sock` during this run.
 
 ## How the languages meet
 
@@ -63,7 +90,8 @@ qemu-system-x86_64 -machine q35 -m 256M -display none -serial stdio \
    - all archives wrapped in `-Wl,--start-group/--end-group` because they
      reference each other in both directions (Rust ↔ C++ ↔ drivers),
    - `--gc-sections` (paired with `-ffunction-sections`) to drop dead code.
-5. **Shell glue** (`scripts/run-qemu.sh`, `scripts/make-iso.sh`) — runs QEMU and
+5. **Shell glue** (`scripts/run-qemu.sh`, `scripts/make-iso.sh`,
+   `scripts/make-fat-image.sh`) — runs QEMU and
    image creation after the ELF is built. These scripts run on the host and do
    not add shell code to the kernel or application runtime.
 
@@ -75,8 +103,15 @@ target directory when it links the Rust static library. Both kernel images
 share that library. The source remains `#![no_std]` and dependency-free.
 
 The Multiboot trampoline enables SSE before Rust starts; Limine hands off with
-SSE available. Kernel code still avoids floating point until the scheduler
-can save task FP state.
+SSE available. Kernel code avoids floating point; the scheduler saves task
+FP/XMM state during switches.
+
+### M3 storage check
+
+`make run-disk` builds a 64 MiB FAT32 image containing `apps/demo/hello.pipb`
+and boots QEMU with an AHCI SATA disk. The serial banner should show a readable
+sector 0 and the Hello bundle loaded through Pippin's File Manager. `make disk`
+only rebuilds the test image.
 
 ### Limine ISO prerequisites
 

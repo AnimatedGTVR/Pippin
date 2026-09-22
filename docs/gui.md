@@ -1,67 +1,68 @@
-# GUI — the retro desktop
+# GUI architecture (M4)
 
-The endgame is a Macintosh-shaped desktop: fixed menu bar, overlapping
-windows, click-to-focus, owner-drawn controls, one primary mouse button. This
-document records the intended shape so early kernel decisions (memory zones,
-event model, handle-based objects) don't paint us into a corner.
+The reusable multi-window API and toolkit are specified in
+[windowing.md](windowing.md). Run `make run-ui` to see two independent C# app
+processes create overlapping windows through the Rust compositor. The apps
+currently run on the host through a broker; Pippin still needs a guest
+managed runtime and loader.
 
-## Milestone 4 — Display Manager ("QuickDraw-lite")
+Pippin's desktop is split into three layers:
 
-- Framebuffer from the bootloader (Limine) at Milestone 1+.
-- A tiny 2-D raster engine: `set_pixel`, `fill_rect`, `blit`, clipping through
-  dirty rectangles. All integers; the FPU policy from [kernel.md](kernel.md)
-  holds.
-- Double-buffered per-window or full-screen back buffer; compositing in the
-  kernel for now, in a trusted server later.
-- Text: a built-in bitmap font (the Macintosh System font energy, not the
-  copyrights). This is the future "Resource Manager" font resource.
+| Layer | Language | Responsibility |
+| --- | --- | --- |
+| Drivers and display access | C++ | PCI discovery, VGA BAR access, PS/2 input |
+| Compositor and window manager | Rust | Framebuffer, wallpaper fallback, clipping, window stack, focus, dragging, close and pointer |
+| Shell and app windows | C# | Panel, dock, launcher, settings, files, notifications, wallpaper selection and individual app content |
 
-## The "Toolbox shell" (Milestone 4–5)
+This aims for a GTK/GNOME-style separation: the compositor owns placement and
+input; independent clients own their controls and content. The initial UI
+library in `apps/csharp/Pippin.UI/` is deliberately small and declarative. A
+`Surface` has a role, bounds and a widget tree (`UiNode`). C# shell components
+in `apps/csharp/Pippin.Shell/` each describe their own surface. The M4.5 bridge
+flattens those widget trees into a small text-and-button protocol. The Rust
+compositor draws them and returns button actions.
 
-Managers that make Pippin feel like a Mac:
+## What runs today
 
-- **Window Manager** — window list, z-order, front window, drag/resize by
-  frame handles, region invalidation, close/zoom boxes.
-- **Menu Manager** — the always-present menu bar; drop-down menus; keyboard
-  equivalents (⌘Q etc.).
-- **Control Manager** — buttons, checkboxes, scrollbars, progress bars, all
-  owner-drawn and hit-testable.
-- **Event Manager** — the application event loop:
-  `kEventWindowActivate`, `kEventMenuSelect`, `kEventMouseDown/Up`,
-  `kEventKey`, `kEventIdle`. Events are queued IPC messages (see
-  [architecture.md](architecture.md) §8), so drivers feed the loop through the
-  same path as timers.
+`make run` opens the QEMU VGA text console. Type `desktop` to switch to an
+800×600 graphics mode. The Rust compositor draws a wallpaper and cursor.
+Press `N` to create a native test window; drag its title bar with the mouse,
+click its square close box, or press Esc to return to the CLI. The native
+window tests z-order, focus and dragging. It is not a C# window.
 
-## Application model
+`make run-shell` builds and starts the C# shell on the host and boots QEMU with
+a socket-backed second serial port. Pippin automatically enters graphics
+mode when the shell connects. The panel, dock and notification appear first.
+Click **Pippin** to open the launcher, **Files** to open its window, or
+**Settings** to change the wallpaper palette. Window title bars drag, and
+their square boxes close them. The C# process owns surface descriptions and
+button actions; the Rust compositor owns pixels, window position and input.
 
-- **Cooperative, event-driven apps**: a document/window draws itself on
-  demand (`kEventWindowActivate`, dirty-region blends) and never blocks the
-  machine. This is the classic Mac formula and it makes single-GUI-user
-  scheduling trivially safe.
-- **Handle-based resources** (the Resource Manager) so apps and the shell can
-  be swapped without pointer invalidation.
-- **C++ and Rust shell and apps:** the desktop shell uses native Toolbox APIs.
-  At Milestone 5, C++ apps use a small Toolbox client library, and Rust apps
-  use bindings to the same stable C ABI.
-- **Optional C# apps (x86-64 only, Milestone 6):** a managed runtime and
-  Toolbox bindings can support C# GUI applications. The shell does not depend
-  on C#, and C# support does not affect the 68k port or kernel.
+Run `dotnet run --project apps/csharp/Pippin.Shell/Pippin.Shell.csproj` without
+the bridge to print the shell descriptions as JSON. Pippin still cannot load
+or execute .NET code inside the guest. The host bridge is an interactive
+development step; running C# inside Pippin requires a managed runtime, app
+loader and guest IPC.
 
-## Aesthetic notes
+## M4.5 bridge protocol
 
-- Greys/beige, dark chrome, and the Mac's confident use of 1 px rules and
-  drop shadows. Fonts bitmap-basic at first, then a proper rasterizer.
-- The desktop busies itself with a menu bar, a "Finder"-like list of apps and
-  draggable windows — not compositor eye-candy. Retrofuturist, not skeuomorph.
+COM1 remains the boot log and CLI. COM2 carries newline-terminated ASCII
+messages to the C# host process. `H|1` / `R|1` is the version handshake.
+`S|id|role|x|y|width|height|title|text@action;...` creates or replaces a
+surface; `X|id` removes one. Pippin acknowledges each command with `A`.
+Button presses return `E|action`. The protocol is bounded to 384 bytes per
+line and 16 simultaneous surfaces; it currently supports simple labels and
+buttons. Background (`B`), panel (`P`), dock (`D`), launcher (`L`),
+notification (`N`) and app window (`W`) roles are defined.
 
-## Premise for the kernel
+## Next implementation steps
 
-The GUI works because of three early kernel decisions, not because of clever
-window code:
+1. Add richer widget rendering, keyboard events, resizing and damage tracking.
+2. Add a guest managed runtime and loader so C# clients can connect through
+   guest IPC rather than the host serial bridge.
+3. Let C# submit wallpaper pixels and app content, while keeping a Rust boot
+   fallback.
 
-1. **Handles, not pointers** — resources survive load/unload without
-   dangling memory.
-2. **Typed event queues** — every input path funnels into the Event Manager.
-3. **Zone memory with ownership** — the Window Manager, Menu Manager, etc.
-   each own a zone, so ownership of a pixel's worth of memory is always
-   defined.
+The bootstrap CLI remains available over VGA text and serial. Its commands
+include `help`, `fetch`, `desktop`, `console`, `clear`, `uname`, `uptime`, `mem`,
+`pci`, `ls`, `cat hello.pipb`, and `echo TEXT`.

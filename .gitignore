@@ -8,6 +8,8 @@
 # Cargo
 /kernel/rust/target/
 Cargo.lock
+/apps/csharp/**/bin/
+/apps/csharp/**/obj/
 
 # Editor / OS
 .vscode/

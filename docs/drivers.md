@@ -12,42 +12,42 @@ Every driver is a C++ object derived from `pippin::drv::Driver`
 ```cpp
 class Driver {
    public:
-    virtual ~Driver() = default;
+    ~Driver() = default;                  // static lifetime; never deleted
     virtual const char* name() const = 0;   // "pci", "ps2", ...
     virtual bool probe() { return false; }  // "do I see my hardware?"
     virtual int  init()  { return 0; }      // bring it up
 };
 ```
 
-A Driver registry is maintained by the Driver Manager. The skeleton exports a
-single `extern "C"` counting function (`pippin_driver_count()` in `pci.cc`)
-which the Rust core calls during boot, proving the Rust→C++→registry path.
+A static Driver registry is maintained by the Driver Manager. At boot the Rust
+core calls `probe` and `init` through C thunks. The PCI driver scans bus,
+device and function configuration space, records device class IDs and links
+devices behind bridges to their nearest parent bridge.
 
 ## Rules
 
-- **Registration is static and declarative:** a driver registers by
-  instantiating a registry entry at construction time; the Manager walks the
-  registry after ACPI/PCI discovery. No dynamic lookup tables before Milestone 3.
+- **Registration is static:** the Manager has a fixed driver list and runs
+  `probe` then `init` at boot.
 - **Cross-language calls are `extern "C"`.** Rust calls the registry through
   `pippin_*` C names; it never sees C++ vtables. The vtables stay inside the
   Driver layer (`drivers/cpp/` + `kernel/cpp/`), which is exactly where they
   should.
 - **Drivers may use the FPU/XMM** (the Milestone-2 scheduler saves per-task FP
   context); kernel core code still must not.
-- **Probe ordering** follows the device tree (ACPI/PCI) rather than discovery
-  order, so dependencies (e.g. a keyboard controller needing interrupt
-  routing) can be satisfied. This arrives with Milestone 3.
+- **PCI discovery** uses configuration mechanism 1 and records bridge parent
+  relationships. ACPI RSDP/root-table validation precedes broader namespace
+  and interrupt-routing support.
 
-## Roadmap (Milestone 3+)
+## Driver status
 
 | Driver    | Notes |
 |-----------|-------|
-| ACPI      | RSDP/SDT parsing in C++; hands the Manager bus topology + interrupt routing |
-| PCI       | config-space walk on the PCI bus; stub target already exists (`pci.cc`) |
-| PS/2      | keyboard/mouse; scancode → `kEventKey`/`kEventMouse` events |
+| ACPI      | RSDP and RSDT/XSDT header/checksum validated; namespace work later |
+| PCI       | config-space scan, class IDs and bridge parent tree |
+| PS/2      | polled keyboard/mouse bytes → Event Manager IPC events |
 | Serial    | 16550 stays the debug console; nothing special needed |
-| VESA/EFI  | framebuffer via Limine (`boot/limine.conf` + `make-iso.sh`); feeds the Display Manager |
-| Storage   | AHCI (SATA) skeleton; feeds the File Manager |
+| Display  | 32-bit RGB framebuffer via Limine; QEMU VGA linear framebuffer preview |
+| Storage   | polling AHCI SATA reader; read-only FAT32 Hello bundle |
 | Clock     | PIT → APIC timer; feeds the scheduler |
 
 ## Adding a driver
@@ -57,5 +57,5 @@ which the Rust core calls during boot, proving the Rust→C++→registry path.
 2. Derive from `pippin::drv::Driver`, implement `name`/`probe`/`init`,
    register it, and wire a `pippin_<name>_*` C export if Rust needs to query it.
 3. Add the source to `drivers/cpp/CMakeLists.txt`.
-4. Keep the Manager's second: bump `pippin_driver_count()` output — the Rust
-   boot banner prints it, so a working registration shows up in the serial log.
+4. Add the driver to the static registry in `pci.cc` or its successor Manager
+   source, then check the boot banner's active count.

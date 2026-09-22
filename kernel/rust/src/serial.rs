@@ -9,13 +9,18 @@ use core::fmt;
 use crate::cpu;
 
 const COM1: u16 = 0x3F8;
-const THR: u16 = COM1 + 0; // transmit holding register
-const LSR: u16 = COM1 + 5; // line status register
+pub const COM2: u16 = 0x2F8;
 
 static READY: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
 
 /// Initialise COM1 at 38400 baud, 8N1, FIFO on.
 pub fn init(base: u16) {
+    init_port(base);
+    READY.store(true, core::sync::atomic::Ordering::SeqCst);
+}
+
+/// Configure another 16550 port without changing the logging console.
+pub fn init_port(base: u16) {
     unsafe {
         cpu::outb(base + 1, 0x00); // disable interrupts
         cpu::outb(base + 3, 0x80); // DLAB on
@@ -25,7 +30,6 @@ pub fn init(base: u16) {
         cpu::outb(base + 2, 0xC7); // enable FIFO, 14-byte threshold
         cpu::outb(base + 4, 0x0B); // IRQs on, RTS/DSR set
     }
-    READY.store(true, core::sync::atomic::Ordering::SeqCst);
 }
 
 /// True once [`init`] has run; the panic handler uses this to avoid
@@ -40,8 +44,8 @@ fn write_byte(byte: u8) {
     }
     // Wait until the transmit holding register is empty.
     unsafe {
-        while cpu::inb(LSR) & 0x20 == 0 {}
-        cpu::outb(THR, byte);
+        while cpu::inb(COM1 + 5) & 0x20 == 0 {}
+        cpu::outb(COM1, byte);
     }
 }
 
@@ -51,6 +55,25 @@ pub struct Console;
 /// Get a handle for `write!`/`writeln!` output to the serial console.
 pub fn stdout() -> Console {
     Console
+}
+
+/// Read one byte if QEMU's serial terminal has input waiting.
+pub fn try_read() -> Option<u8> {
+    if !is_ready() { return None; }
+    try_read_port(COM1)
+}
+
+pub fn try_read_port(base: u16) -> Option<u8> {
+    unsafe { if cpu::inb(base + 5) & 1 == 0 { None } else { Some(cpu::inb(base)) } }
+}
+
+pub fn write_port(base: u16, bytes: &[u8]) {
+    for &byte in bytes {
+        unsafe {
+            while cpu::inb(base + 5) & 0x20 == 0 {}
+            cpu::outb(base, byte);
+        }
+    }
 }
 
 impl fmt::Write for Console {

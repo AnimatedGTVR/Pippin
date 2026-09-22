@@ -41,21 +41,51 @@ M2 demonstrates one ring-3 process in the shared boot address space. Private
 address spaces, general executable loading, and a user Toolbox ABI remain
 future work.
 
-## M3 — Drivers & File
+## M3 — Drivers & File (core complete) ✅
 
-- [ ] ACPI/PCI discovery; real device tree; driver midlifecycle (`probe`/`init`)
-- [ ] PS/2 keyboard/mouse → `kEventKey`/`kEventMouse`
-- [ ] VESA framebuffer via Limine (budget: the Display Manager goes live)
-- [ ] AHCI disk + FAT (then ISO9660)
-- [ ] First user of the File Manager: load an app bundle from disk
+- [x] ACPI root table validation, PCI discovery and bridge parent tree;
+      C++ driver `probe`/`init` lifecycle
+- [x] PS/2 keyboard/mouse packets → Event Manager IPC events
+- [x] RGB framebuffer via Limine (first Display Manager path)
+- [x] AHCI SATA sector reads and bounded read-only FAT32 file access
+- [x] File Manager loads a versioned Hello app bundle from FAT32 disk;
+      Limine module path also works from ISO
+
+M3's file path reads one small root-directory bundle; it does not execute the
+bundle as a user program. The AHCI reader is polling and single-port. ISO9660,
+FAT writes, ACPI namespace evaluation and broader hardware support follow in
+later storage and driver work.
 
 ## M4 — GUI
 
-- [ ] Display Manager: framebuffer compositor + 2-D raster engine
-- [ ] Window Manager: z-order, drag/resize, dirty regions
-- [ ] Menu Manager (fixed menu bar), Control Manager (owner-drawn widgets)
-- [ ] Resource Manager: typed blobs, fonts, themes
-- [ ] C++ and Rust desktop shell: menu bar, click-to-focus windows, desktop background
+- [x] Interactive bootstrap CLI on VGA text and serial (`help`, `fetch`, `clear`,
+      `uname`, `uptime`, `mem`, `pci`, `ls`, `cat`, `echo`)
+- [x] Rust framebuffer compositor with wallpaper fallback and clipped 2-D drawing
+- [x] Rust window stack with focus, dragging, close box, mouse pointer, and Esc return
+- [x] C# UI and shell projects define panel, dock, launcher, settings, files,
+      notifications, wallpaper, and individual app surfaces on the host
+- [ ] Window resizing and damage tracking
+- [ ] Managed guest runtime, app loader, and IPC connection for C# surfaces
+
+## M4.5 — C# shell in QEMU
+
+- [x] QEMU COM2 socket bridge with versioned surface and click protocol
+- [x] C# host shell displays its panel, dock, notification, launcher, Settings,
+      Files and wallpaper palette as separate QEMU surfaces
+- [x] Rust compositor returns button actions to C#; C# opens and closes windows
+- [ ] Managed runtime and loader to move the C# process inside Pippin
+
+## Window API foundation (host clients in QEMU)
+
+- [x] Generic Rust client windows with independent pixel buffers, z-order,
+      focus, moving, resizing, close requests, clipping and client events
+- [x] Version 2 window protocol and broker for multiple C# processes
+- [x] Low-level C# window API for lifecycle, geometry, invalidation, cursors,
+      surfaces and input events
+- [x] Two independent C# processes create overlapping About and Task Manager
+      windows in QEMU; each paints and receives events through its own surface
+- [x] First reusable toolkit widgets: Window, Panel, StackPanel, Label, Button
+- [ ] Guest process loader and managed runtime replace the host bridge
 
 ## M5 — Native Apps
 
@@ -64,20 +94,21 @@ future work.
 - [ ] Rust bindings to the same stable Toolbox C ABI
 - [ ] Sample: a bitmap/text editor that can load/save via the File Manager
 
-## M6 — Optional C# Apps (x86-64 only)
+## M6 — Application runtime expansion
 
-- [ ] Evaluate a managed runtime for optional apps in `apps/csharp/`
-- [ ] C# bindings to the Toolbox ABI for windows, controls, and events
-- [ ] Sample C# GUI app alongside native C++ and Rust apps
+- [ ] Broaden managed app packaging, lifecycle, and services after the M4 C#
+      shell runtime is working
+- [ ] Sample third-party C# GUI app alongside native C++ and Rust apps
 
 ## M7 — 68k study
 
 - [ ] Feasibility: kernel core (Rust) + C++ subsystem split on 68k
 - [ ] Decide: 68k as an emulated target (Retro68/QEMU) vs physical
-- [ ] Keep optional C# application support outside the 68k platform
+- [ ] Decide whether a managed shell is feasible on 68k or needs a native alternative
 
 ## Skipping notes
 
-- C# app support is optional, begins no earlier than M6, and does not follow to 68k.
+- C# shell support is an M4 goal on x86-64; a managed guest runtime is not yet
+  available. Any 68k port needs its own shell/runtime decision.
 - The kernel core stays `no_std`, dependency-free, and float-free forever —
   that discipline is what makes M7 plausible.

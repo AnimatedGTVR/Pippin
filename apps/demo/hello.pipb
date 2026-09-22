@@ -1,0 +1,3 @@
+PIPPIN-BUNDLE/1
+name=Hello
+message=Hello from a disk-loaded Pippin bundle.

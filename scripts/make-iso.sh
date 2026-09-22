@@ -14,6 +14,7 @@ command -v "$XORRISO_BIN" >/dev/null || { echo "xorriso not found: $XORRISO_BIN"
 
 mkdir -p "$ISO_DIR/boot" "$ISO_DIR/EFI/BOOT"
 cp "$ROOT/build/kernel-limine.elf" "$ISO_DIR/boot/kernel-limine.elf"
+cp "$ROOT/apps/demo/hello.pipb" "$ISO_DIR/boot/hello.pipb"
 cp "$ROOT/boot/limine.conf" "$ISO_DIR/boot/limine.conf"
 cp "$LIMINE_DIR/limine-bios.sys" "$ISO_DIR/boot/limine-bios.sys"
 cp "$LIMINE_DIR/limine-bios-cd.bin" "$ISO_DIR/boot/limine-bios-cd.bin"

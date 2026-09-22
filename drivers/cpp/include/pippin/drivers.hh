@@ -25,7 +25,7 @@ enum class DeviceClass : uint32_t {
 // can drive them too (docs/architecture.md, § Driver model).
 class Driver {
    public:
-    virtual ~Driver() = default;
+    ~Driver() = default;
     virtual const char* name() const = 0;
     virtual bool probe() { return false; }
     virtual int init() { return 0; }

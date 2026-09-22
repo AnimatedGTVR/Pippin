@@ -37,6 +37,12 @@ back into (`kernel/rust/src/ffi.rs`). Nothing enters Rust but through
 | `gdt.rs`      | GDT, TSS, and double-fault stack |
 | `idt.rs`/`interrupts.rs` | 256-vector IDT, PIC/PIT and interrupt dispatch |
 | `apic.rs`     | calibrated local APIC timer |
+| `acpi.rs`/`ahci.rs` | ACPI root discovery and polling SATA reads |
+| `display.rs`/`ps2.rs` | Limine RGB framebuffer, VGA text, and polled input events |
+| `desktop.rs`  | QEMU VGA mode switching and framebuffer presentation |
+| `compositor.rs` | Rust wallpaper fallback, window stack, pointer, drawing |
+| `cli.rs`      | M4 bootstrap command shell over VGA text and serial |
+| `file.rs`     | Limine module and bounded read-only FAT32 bundle loading |
 | `sched.rs`    | preemptive run queue, task stacks, process slots, FP state |
 | `syscall.rs`  | numbered ring-3 syscall table and demo process setup |
 | `ipc.rs`/`event.rs` | owned message ports and Event Manager delivery |
@@ -69,8 +75,13 @@ later milestones.
 The M2 demo runs one ring-3 task in the shared boot address space. The task
 maps a page, logs, sends an IPC event and exits. General executable loading
 and private process page tables are later work.
-- **Milestone 3 — file & drivers:** VFS + FAT (then ISO9660), the Driver
-  Manager consuming C++ `Driver`s.
+- **Milestone 3 — file & drivers (core complete):** ACPI root validation,
+  PCI bridge tree and C++ driver lifecycle, PS/2 events, Limine framebuffer,
+  polling AHCI SATA reads, and a bounded FAT32 Hello bundle loader.
+  ISO9660 and broader file operations remain future work.
+- **Milestone 4 — in progress:** an interactive command shell consumes PS/2
+  key events and serial input; the Rust framebuffer compositor is an M4
+  prototype and C# guest clients remain future work.
 
 ## Interrupt discipline
 

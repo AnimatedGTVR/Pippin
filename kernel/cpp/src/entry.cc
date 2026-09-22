@@ -49,6 +49,27 @@ extern "C" const char* pippin_cpp_version() {
 // The Multiboot image never calls them, but the shared Rust archive references
 // both boot paths in its common entry routine.
 extern "C" __attribute__((weak)) size_t pippin_limine_region_count() { return 0; }
+extern "C" __attribute__((weak)) bool pippin_limine_framebuffer(uint64_t*, uint64_t*,
+    uint64_t*, uint64_t*, uint16_t*) { return false; }
+extern "C" __attribute__((weak)) const uint8_t* pippin_acpi_rsdp() {
+    const uint16_t ebda_segment = *reinterpret_cast<const volatile uint16_t*>(0x40e);
+    const uintptr_t ebda = uintptr_t(ebda_segment) << 4;
+    const char signature[] = "RSD PTR ";
+    for (int region = 0; region < 2; ++region) {
+        const uintptr_t start = region == 0 ? ebda : 0xe0000;
+        const uintptr_t end = region == 0 ? ebda + 1024 : 0x100000;
+        for (uintptr_t address = start; address < end; address += 16) {
+            const auto* bytes = reinterpret_cast<const volatile uint8_t*>(address);
+            bool match = true;
+            for (unsigned i = 0; i < 8; ++i) match &= bytes[i] == uint8_t(signature[i]);
+            if (match) return reinterpret_cast<const uint8_t*>(address);
+        }
+    }
+    return nullptr;
+}
+extern "C" __attribute__((weak)) bool pippin_boot_bundle(const uint8_t**, uint64_t*) {
+    return false;
+}
 extern "C" __attribute__((weak)) void pippin_limine_region(size_t, uint64_t* base,
                                                             uint64_t* len, uint64_t* kind) {
     *base = *len = *kind = 0;

@@ -1,8 +1,8 @@
 # Pippin Architecture
 
-A retro-styled, Macintosh-inspired desktop operating system. Single-user,
-GUI-first, designed to look and feel like a classic Macintosh while running on
-modest modern hardware.
+A single-user desktop operating system with a Rust compositor and a planned
+C# shell. The desktop can keep its retro styling while using separate shell
+components and application windows.
 
 This document is the system's north star. Everything else in `docs/` is a
 deeper dive into one slice: [build](build.md), [boot](boot.md),
@@ -13,10 +13,9 @@ deeper dive into one slice: [build](build.md), [boot](boot.md),
 
 ## 1. Design goals
 
-1. **The classic Macintosh experience.** Desktop metaphor: overlapping
-   windows, a fixed menu bar, click-to-focus, drag-select, single primary
-   mouse button. The system is built around a *Toolbox* of cooperating
-   service managers and an event loop, not around POSIX-style processes.
+1. **A usable desktop.** Overlapping windows, click-to-focus, pointer dragging,
+   a panel, dock, launcher, settings, files and notifications. C# clients own
+   their UI; the Rust compositor owns the screen and window stack.
 2. **Retro where it makes sense, modern where it has to.** A preemptive
    scheduler and memory protection underneath, cooperative, event-driven
    applications on top. We borrow the Mac's *cooperative multitasking +
@@ -42,11 +41,12 @@ deeper dive into one slice: [build](build.md), [boot](boot.md),
 |------------------|----------|----------------|
 | Boot & CPU       | Assembly and Rust | Multiboot long-mode entry in Assembly; GDT/TSS, IDT, interrupt dispatch, and timers in Rust |
 | Kernel core      | Rust     | Memory manager, interrupt dispatch, scheduler, IPC, syscall table, Toolbox service plumbing, safety-critical data structures |
-| Subsystems       | C++      | ACPI/PCI, disks, filesystem, graphics/compositor plumbing, the C++ half of the Toolbox, driver framework |
+| Subsystems       | C++      | ACPI/PCI, disks, filesystem, VGA BAR discovery, the C++ half of the Toolbox, driver framework |
 | Glue / ABI       | C        | libc-style stubs (`memset`, `memcpy`, `strlen`, …), a stable shim layer for anything that wants a plain C ABI |
 | Drivers          | C++      | Concrete device drivers implementing the `pippin::drv::Driver` interface |
-| Desktop shell (later) | C++ and Rust | Native shell, desktop services, and Toolbox clients |
-| Applications (later) | C++ and Rust; optional C# | Native Toolbox apps first; optional managed C# apps use Toolbox bindings on x86-64 |
+| Compositor | Rust | Framebuffer, window stack, input, focus and composition |
+| Desktop shell (planned guest runtime) | C# | Panel, dock, launcher, settings, files, notifications, wallpaper and app windows |
+| Applications (later) | C#, C++ and Rust | Separate GUI clients through a versioned surface and event protocol |
 | Build and boot tooling | Shell | Host-side scripts connect build, image creation, and QEMU commands |
 
 This map describes current code and planned roles; it is not a fixed language
@@ -62,21 +62,20 @@ small system utilities. Its current Rust interpreter uses host file, process,
 and environment APIs, so running it inside Pippin would require those services
 and a port. Vanta is not part of the boot or kernel path today.
 
-Future note — **68k**: the planned Motorola 68k port keeps Assembly + Rust + C++
-(kernel) and C++ (drivers), with a C++ and Rust desktop. Optional C# app support
-does not follow to 68k.
+Future note — **68k**: a possible Motorola 68k port needs a separate decision
+about its shell and managed runtime.
 
 ## 4. Layered architecture
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
-│  APPS (later): C++/Rust shell and apps; optional C# apps      │
-│  → event loop, Window/Menu/Control managers, Resource Mgr    │
+│  APPS: C# shell definitions; future C#/C++/Rust clients      │
+│  → separate surfaces, widgets, events, Resource Mgr          │
 ├───────────────────────────────────────────────────────────────┤
 │  TOOLBOX API  (the "Macintosh-style" service surface)        │
 │  → externally stable syscall ABI, handle-based                │
 ├───────────────────────────────────────────────────────────────┤
-│  KERNEL SERVICES (Rust core + C++ subsystems)                │
+│  KERNEL SERVICES (Rust core/compositor + C++ subsystems)     │
 │  → Memory Mgr, Processor/Scheduler, IPC/Event Mgr, File Mgr, │
 │    Driver Mgr, Display Mgr                                    │
 ├───────────────────────────────────────────────────────────────┤
@@ -107,7 +106,7 @@ calls routed through the syscall table. Several are familiar; a few are blends:
 | Driver Manager        | (Drivers)              | device tree, probe/init lifecycle, "Gestalt" registry |
 | Display Manager       | QuickDraw              | framebuffer, 2-D primitives, double-buffering |
 | Window Manager        | Window Manager         | window list, dirty regions, hit-testing |
-| Menu Mgr / Control Mgr | Menu/Control Managers | fixed menu bar, buttons/scrollbars/… |
+| UI clients | Menu/Control Managers | C# panel, dock, launcher and widget trees |
 | Resource Manager      | Resource Manager       | typed blobs (`.rsrc`-style), theme, app resources |
 
 The boundary between "kernel" and "Toolbox server" is deliberately fuzzy at
@@ -193,7 +192,7 @@ Pippin/
 │   ├── linker.ld           # Multiboot image
 │   └── limine-linker.ld    # Limine image
 ├── drivers/cpp/            # C++ driver layer
-├── apps/                   # future C++/Rust apps; optional C# bindings
+├── apps/csharp/            # C# UI contract and shell descriptions
 └── scripts/                # run-qemu.sh, make-iso.sh
 ```
 
@@ -205,6 +204,6 @@ before entering the same Rust core. Full details are in [boot.md](boot.md).
 
 ## 13. Roadmap
 
-See [milestones.md](milestones.md). M0 skeleton and M1 core are complete. Next
-are M2 processes+syscalls+IPC, M3 drivers, M4 GUI, M5 native apps, optional
-M6 C# apps on x86-64, and M7 68k study.
+See [milestones.md](milestones.md). M0–M2 are complete; M3 has a working core.
+M4 builds the Rust compositor and C# shell, M5 adds native apps, M6 broadens
+managed app support, and M7 studies a 68k port.

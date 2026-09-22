@@ -18,9 +18,18 @@
 extern crate alloc;
 
 mod cpu;
+mod acpi;
+mod ahci;
+mod cli;
+mod bridge;
+mod window_server;
+mod compositor;
+mod desktop;
+mod display;
 mod apic;
 mod ffi;
 mod event;
+mod file;
 mod gdt;
 mod heap;
 mod idt;
@@ -28,6 +37,7 @@ mod interrupts;
 mod ipc;
 mod mem;
 mod mm;
+mod ps2;
 mod serial;
 mod sched;
 mod syscall;
@@ -96,7 +106,7 @@ pub extern "C" fn pippin_core_main_limine() -> ! {
 
 fn core_main(mb_info: Option<u32>) -> ! {
     serial::init(0x3F8);
-    let mut console: serial::Console = serial::stdout();
+    let mut console = cli::Terminal::new(mb_info.is_some());
 
     let _ = writeln!(console, "Pippin kernel core [rust] booting...");
     match mb_info {
@@ -107,7 +117,19 @@ fn core_main(mb_info: Option<u32>) -> ! {
         None => { let _ = writeln!(console, "  boot:              Limine protocol"); }
     }
     let _ = writeln!(console, "  C++ runtime says:   {}", ffi::cpp_version());
-    let _ = writeln!(console, "  drivers registered: {}", ffi::driver_count());
+    let _ = ffi::probe_drivers();
+    let _ = writeln!(console, "  drivers active:     {}", ffi::driver_count());
+    let _ = writeln!(console, "  pci:              {} devices", ffi::pci_device_count());
+    if let Some(root) = acpi::discover() {
+        let _ = writeln!(console, "  acpi:             RSDP rev {}, XSDT={:#x}, {} tables",
+                         root.revision, root.xsdt_address, root.table_count);
+    } else {
+        let _ = writeln!(console, "  acpi:             no valid RSDP");
+    }
+    if let Some((vendor, product, class, subclass)) = ffi::pci_device(0) {
+        let _ = writeln!(console, "  pci:              first {:04x}:{:04x} class {:02x}:{:02x} parent={}",
+                         vendor, product, class, subclass, ffi::pci_parent(0));
+    }
 
     // Memory manager bootstrap (frame allocator over the bootloader's map).
     let report = unsafe { match mb_info { Some(info) => mem::init(info), None => mem::init_limine() } };
@@ -155,6 +177,34 @@ fn core_main(mb_info: Option<u32>) -> ! {
     drop(aligned);
     let _ = writeln!(console, "  heap:              align64={} freed value={}", address % 64 == 0, value);
 
+    if let Some(framebuffer) = display::discover() {
+        framebuffer.clear();
+        let _ = writeln!(console, "  display:          {}x{} RGB framebuffer ready",
+                         framebuffer.width, framebuffer.height);
+    } else {
+        let _ = writeln!(console, "  display:          no Limine framebuffer");
+    }
+    let mut loaded_bundle = file::boot_bundle();
+    if let Some(bundle) = loaded_bundle {
+        let _ = writeln!(console, "  file:             bundle '{}' says '{}'", bundle.name, bundle.message);
+    } else {
+        let _ = writeln!(console, "  file:             no boot app bundle");
+    }
+    if let Some(mut disk) = ahci::discover() {
+        let mut sector = [0u8; 512];
+        let readable = disk.read_sector(0, &mut sector);
+        let _ = writeln!(console, "  ahci:             SATA disk sector 0 readable={readable}");
+        if let Some(bundle) = file::fat_bundle(&mut disk) {
+            loaded_bundle = Some(bundle);
+            let _ = writeln!(console, "  file:             FAT32 bundle '{}' says '{}'",
+                             bundle.name, bundle.message);
+        } else {
+            let _ = writeln!(console, "  file:             no valid FAT32 Hello bundle");
+        }
+    } else {
+        let _ = writeln!(console, "  ahci:             no SATA disk");
+    }
+
     // Install the kernel GDT/TSS before the IDT uses its double-fault IST.
     unsafe { gdt::init() };
     let _ = writeln!(console, "  gdt:              TSS loaded, double-fault IST ready");
@@ -180,6 +230,8 @@ fn core_main(mb_info: Option<u32>) -> ! {
     MAIN_PORT.store(port, Ordering::Relaxed);
     sched::set_event_port(port);
     event::set_boot_port(port);
+    let mouse_ready = ps2::init_mouse();
+    let _ = writeln!(console, "  input:            PS/2 keyboard poll, mouse ready={mouse_ready}");
     let zone = zones::create().expect("boot object zone");
     sched::set_zone(zone);
     let handle = zones::alloc(zone, 7).expect("boot object handle");
@@ -192,6 +244,8 @@ fn core_main(mb_info: Option<u32>) -> ! {
 
     let t0 = interrupts::ticks();
     interrupts::sleep_ms(250);
+    let input_events = ps2::poll(port);
+    let _ = writeln!(console, "  input:            {} events polled", input_events);
     let t1 = interrupts::ticks();
     let _ = writeln!(console, "  int:              ticks {t0} -> {t1} (+{} in 250 ms)", t1 - t0);
     let _ = writeln!(console, "  sched:            {} switches, worker ticks {} / {}, work {} / {}",
@@ -215,8 +269,19 @@ fn core_main(mb_info: Option<u32>) -> ! {
                      zone, object.0, object.1[0] as char, HANDLE_DENIED.load(Ordering::Relaxed));
     let _ = zones::free(handle);
 
-    let _ = writeln!(console, "Pippin kernel core enters idle loop.");
+    let _ = writeln!(console, "Pippin command shell ready.");
+    let mut shell = cli::Shell::new(console, loaded_bundle);
     loop {
+        let _ = ps2::poll(port);
+        shell.poll_serial();
+        shell.poll_bridge();
+        while let Some(input) = event::poll() {
+            if input.kind == ps2::KEY_EVENT {
+                shell.key_scancode(input.value as u8);
+            } else if input.kind == ps2::MOUSE_EVENT {
+                shell.mouse_packet(input.value as u32);
+            }
+        }
         cpu::halt();
     }
 }

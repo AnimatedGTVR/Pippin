@@ -2,7 +2,7 @@
 
 A retro-styled, Macintosh-inspired desktop operating system. Single-user, GUI-first,
 built with a mix of **Assembly**, **Rust**, **C++** and **C** in the kernel, **C++**
-drivers, a **C++ and Rust** desktop, optional **C#** applications later, and
+drivers, a **Rust** compositor and **C#** desktop shell, and
 **shell scripts** for build and boot glue.
 
 These are the current choices, not a limit on Pippin's languages. Other
@@ -23,7 +23,7 @@ languages can join when a subsystem or application benefits from them.
 | `kernel/c/`                      | C glue: libc-style stubs used by C++ and Rust        |
 | `drivers/cpp/`                   | C++ driver layer (PCI stub today)                    |
 | `boot/`                          | Limine bootloader config                              |
-| `apps/`                          | Future application layer (C++ and Rust; optional C#) |
+| `apps/`                          | C# shell model and future native applications         |
 | `scripts/`                       | Shell glue for QEMU / ISO workflows                  |
 
 ## Build
@@ -34,7 +34,11 @@ to run it. `make iso` also needs Limine and `xorriso`.
 
 ```sh
 make                # configure + build build/kernel.elf
-make run            # boot it in QEMU (serial console)
+make run            # boot it in a QEMU window; serial log in terminal
+make run-shell      # boot the interactive C# host shell in QEMU
+make run-ui         # two independent C# apps using the new window API
+make run-headless   # serial console only
+make run-disk       # QEMU window with the FAT32 Hello bundle disk
 make run-gdb        # boot under QEMU with a GDB stub on :1234
 make iso            # build the Limine BIOS/UEFI ISO
 make clean
@@ -42,14 +46,28 @@ make clean
 
 See [docs/build.md](docs/build.md) for the full toolchain and ISO setup.
 
+After `make run`, click the QEMU window and type `fetch` or `help` at the
+`pippin>` prompt. Type `desktop` for the Rust wallpaper compositor, press `N`
+to open a draggable native test window, and press Esc to return to the CLI.
+Use `make run-disk` to make `hello.pipb` available to `ls` and `cat`.
+`make run-shell` starts the host .NET shell and connects it to Pippin over
+QEMU's second serial port. Click Pippin in the panel to open the launcher or
+Files in the dock to open its C# defined window.
+`make run-ui` starts a window broker and two separate C# processes. About and
+Task Manager each paint a private surface through the reusable window API;
+both appear in QEMU. See [docs/windowing.md](docs/windowing.md) for the API and
+the remaining guest-runtime boundary.
+
 ## Design in one paragraph
 
 Pippin is organized like the classic Macintosh Toolbox: a collection of cooperating
 "Managers" (Memory, Processor, Event, File, Driver, Display, Window, Menu, Control,
 Resource) wrapped around a small preemptive kernel core. Assembly owns boot and the CPU
 trampolines, Rust owns the safety-critical core (memory, interrupts, scheduling, IPC),
-C++ owns subsystems and drivers, C provides ABI-shim glue, and the future desktop
-shell uses C++ and Rust. Optional C# apps can use the same Toolbox API. The full
+C++ owns subsystems and drivers, C provides ABI-shim glue, Rust owns the
+compositor and window management, and C# defines the panel, dock, launcher,
+settings, files, notifications, wallpaper and app windows. The C# projects
+build on the host; guest execution still needs a managed runtime and IPC. The full
 picture lives in [docs/architecture.md](docs/architecture.md). Shell scripts
 connect build, image, and emulator steps on the development host.
 
@@ -59,8 +77,11 @@ connect build, image, and emulator steps on the development host.
 - **M1 — Core (complete):** higher-half paging, GDT/TSS/IDT, frame and heap allocators, APIC timer, Limine ISO.
 - **M2 — Processes (complete):** preemptive scheduler, ring-3 syscall ABI,
   IPC event ports, owned zones and handles.
-- **M3 — Drivers:** ACPI/PCI, PS/2, VESA framebuffer, disk.
-- **M4 — GUI:** compositor, window/menu/control managers, retro desktop.
+- **M3 — Drivers (core complete):** ACPI/PCI discovery, PS/2 events, Limine
+  framebuffer, AHCI reads, FAT32 Hello bundle loading.
+- **M4 — GUI:** Rust compositor/window manager and C# desktop shell.
+- **M4.5 — C# bridge:** interactive host C# shell surfaces displayed in QEMU.
+- **Window API foundation:** separate clients, owned surfaces and input events.
 - **M5 — Apps:** C++ and Rust applications using the Toolbox API.
-- **M6 — Optional C# apps:** managed apps using the Toolbox API on x86-64.
+- **M6 — Runtime expansion:** managed app packaging and services on x86-64.
 - **M7 — 68k:** Motorola 68000 feasibility port.
