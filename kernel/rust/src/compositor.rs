@@ -38,6 +38,8 @@ const CONTROL_STYLE_STATUS: u8 = 5;
 const CONTROL_FLAG_FOCUSABLE: u8 = 1 << 0;
 const CONTROL_FLAG_DISABLED: u8 = 1 << 1;
 const HEADER_HEIGHT: i32 = 44;
+const SCROLL_LINE: i32 = 32;
+const CONTENT_BOTTOM_PADDING: i32 = 20;
 
 #[derive(Clone)]
 struct Row {
@@ -90,6 +92,7 @@ struct Window {
     native: bool,
     maximized: bool,
     minimized: bool,
+    scroll_y: i32,
     restore: Option<(i32, i32, i32, i32)>,
 }
 
@@ -171,6 +174,7 @@ impl Compositor {
                     native: false,
                     maximized: false,
                     minimized: !surface.visible,
+                    scroll_y: 0,
                     restore: None,
                 });
             }
@@ -196,7 +200,7 @@ impl Compositor {
                 text: "DRAG TITLE BAR".to_string(), action: String::new(), kind: b'l',
                 style: 0, flags: 0, x: 0, y: 0, width: 0, height: 0,
             }],
-            native: true, maximized: false, minimized: false, restore: None,
+            native: true, maximized: false, minimized: false, scroll_y: 0, restore: None,
         });
         self.next_id = self.next_id.wrapping_add(1).max(1);
         self.render();
@@ -292,7 +296,7 @@ impl Compositor {
             if self.windows.len() >= MAX_WINDOWS { return false; }
             self.windows.push(Window { id: id.to_string(), role, x, y, width, height,
                                        title: title.to_string(), rows: parsed_rows, native: false,
-                                       maximized: false, minimized: false, restore: None });
+                                       maximized: false, minimized: false, scroll_y: 0, restore: None });
         }
         self.repair_focus_scope();
         self.render();
@@ -379,6 +383,105 @@ impl Compositor {
         self.left_down = left;
         self.render();
         (action, events)
+    }
+
+    fn is_scrollable(window: &Window) -> bool {
+        matches!(window.role, b'W' | b'L')
+    }
+
+    fn content_bottom(window: &Window) -> i32 {
+        window.rows.iter()
+            .filter(|row| row.width > 0 && row.height > 0)
+            .map(|row| row.y.saturating_add(row.height))
+            .max()
+            .unwrap_or(HEADER_HEIGHT + 1)
+    }
+
+    fn max_scroll(window: &Window) -> i32 {
+        if !Self::is_scrollable(window) { return 0; }
+        let viewport_bottom = (window.height - 1).max(HEADER_HEIGHT + 1);
+        Self::content_bottom(window)
+            .saturating_add(CONTENT_BOTTOM_PADDING)
+            .saturating_sub(viewport_bottom)
+            .max(0)
+    }
+
+    fn clamp_scroll(window: &mut Window) {
+        window.scroll_y = window.scroll_y.clamp(0, Self::max_scroll(window));
+    }
+
+    fn scroll_window(window: &mut Window, delta: i32) -> bool {
+        if !Self::is_scrollable(window) { return false; }
+        let before = window.scroll_y;
+        window.scroll_y = window.scroll_y.saturating_add(delta);
+        Self::clamp_scroll(window);
+        window.scroll_y != before
+    }
+
+    fn scroll_under_pointer(&mut self, delta: i32) -> bool {
+        let Some(index) = self.windows.iter().rposition(|window| {
+            !window.minimized
+                && Self::is_scrollable(window)
+                && self.cursor_x >= window.x
+                && self.cursor_x < window.x + window.width
+                && self.cursor_y >= window.y
+                && self.cursor_y < window.y + window.height
+        }) else { return false; };
+
+        Self::scroll_window(&mut self.windows[index], delta)
+    }
+
+    fn scroll_scope_by(&mut self, delta: i32) -> bool {
+        let FocusScope::Window(id) = &self.focus_scope else { return false; };
+        let Some(index) = self.windows.iter().position(|window| {
+            !window.minimized && &window.id == id
+        }) else { return false; };
+        Self::scroll_window(&mut self.windows[index], delta)
+    }
+
+    fn scroll_scope_to(&mut self, end: bool) -> bool {
+        let FocusScope::Window(id) = &self.focus_scope else { return false; };
+        let Some(index) = self.windows.iter().position(|window| {
+            !window.minimized && &window.id == id
+        }) else { return false; };
+        let target = if end { Self::max_scroll(&self.windows[index]) } else { 0 };
+        let changed = self.windows[index].scroll_y != target;
+        self.windows[index].scroll_y = target;
+        changed
+    }
+
+    fn ensure_focused_visible(&mut self) {
+        let Some((id, row_index)) = self.focused_control.clone() else { return; };
+        let Some(index) = self.windows.iter().position(|window| {
+            !window.minimized && window.id == id && Self::is_scrollable(window)
+        }) else { return; };
+
+        let Some(row) = self.windows[index].rows.get(row_index).cloned() else { return; };
+        if row.width <= 0 || row.height <= 0 { return; }
+
+        let viewport_top = HEADER_HEIGHT + 1;
+        let viewport_bottom = self.windows[index].height - 1;
+        let mut target = self.windows[index].scroll_y;
+        let visible_top = row.y - target;
+        let visible_bottom = row.y + row.height - target;
+
+        if visible_top < viewport_top {
+            target = row.y - viewport_top;
+        } else if visible_bottom > viewport_bottom {
+            target = row.y + row.height - viewport_bottom;
+        }
+
+        self.windows[index].scroll_y = target;
+        Self::clamp_scroll(&mut self.windows[index]);
+    }
+
+    fn local_content_y(window: &Window, screen_y: i32) -> i32 {
+        let local = screen_y - window.y;
+        if Self::is_scrollable(window) {
+            local.saturating_add(window.scroll_y)
+        } else {
+            local
+        }
     }
 
     fn content_clip(window: &Window) -> ClipRect {
