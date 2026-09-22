@@ -137,17 +137,39 @@ constexpr pippin_shell_item kLauncherItems[] = {
     shellItem(kLauncherControls[4]),
 };
 
-constexpr ui::ControlSpec kFilesSpecs[] = {
-    ui::heading("Home"),
-    ui::searchBox("Search files", "files.search"),
-    ui::button("Documents", "files.documents.open"),
-    ui::button("Downloads", "files.downloads.open"),
+constexpr ui::Node kFilesActionNodes[] = {
+    ui::cross(ui::grow(ui::leaf(ui::button("Documents", "files.documents.open")), 1), 56),
+    ui::cross(ui::grow(ui::leaf(ui::button("Downloads", "files.downloads.open")), 1), 56),
 };
 
-constexpr auto kFilesControls = ui::flow(
-    windowContent(620, 500),
-    kFilesSpecs
+constexpr ui::Node kFilesActionRow =
+    ui::fixed(ui::group(ui::Axis::HORIZONTAL, kFilesActionNodes, 12), 72);
+
+constexpr ui::Node kFilesColumnNodes[] = {
+    ui::leaf(ui::heading("Home")),
+    ui::leaf(ui::searchBox("Search files", "files.search")),
+    kFilesActionRow,
+};
+
+constexpr ui::Node kFilesColumn =
+    ui::group(ui::Axis::VERTICAL, kFilesColumnNodes, 12);
+
+constexpr ui::Node kFilesTree =
+    ui::proxy(kFilesColumn, ui::Insets{20, 24, 20, 24});
+
+constexpr auto kFilesControls = ui::layoutTree<4>(
+    kFilesTree,
+    ui::Rect{0, 44, 620, 456}
 );
+
+static_assert(kFilesControls.valid());
+static_assert(kFilesControls.size() == 4);
+static_assert(kFilesControls[0].frame.y == 64);
+static_assert(kFilesControls[1].frame.y == 106);
+static_assert(kFilesControls[2].frame.y == 164);
+static_assert(kFilesControls[2].frame.width == 280);
+static_assert(kFilesControls[3].frame.x == 316);
+static_assert(kFilesControls[3].frame.width == 280);
 
 constexpr pippin_shell_item kFilesItems[] = {
     shellItem(kFilesControls[0]),
@@ -156,18 +178,47 @@ constexpr pippin_shell_item kFilesItems[] = {
     shellItem(kFilesControls[3]),
 };
 
-constexpr ui::ControlSpec kSettingsSpecs[] = {
-    ui::heading("Settings"),
-    ui::heading("Appearance", 26),
-    ui::toggle("Animations", "settings.animations.toggle"),
-    ui::heading("Desktop", 26),
-    ui::toggle("Show dock", "settings.dock.toggle"),
+constexpr ui::Node kAppearanceSectionNodes[] = {
+    ui::leaf(ui::heading("Appearance", 26)),
+    ui::leaf(ui::toggle("Animations", "settings.animations.toggle")),
 };
 
-constexpr auto kSettingsControls = ui::flow(
-    windowContent(520, 430),
-    kSettingsSpecs
+constexpr ui::Node kAppearanceSection =
+    ui::fixed(ui::group(ui::Axis::VERTICAL, kAppearanceSectionNodes, 8), 72);
+
+constexpr ui::Node kDesktopSectionNodes[] = {
+    ui::leaf(ui::heading("Desktop", 26)),
+    ui::leaf(ui::toggle("Show dock", "settings.dock.toggle")),
+};
+
+constexpr ui::Node kDesktopSection =
+    ui::fixed(ui::group(ui::Axis::VERTICAL, kDesktopSectionNodes, 8), 72);
+
+constexpr ui::Node kSettingsColumnNodes[] = {
+    ui::leaf(ui::heading("Settings")),
+    kAppearanceSection,
+    kDesktopSection,
+};
+
+constexpr ui::Node kSettingsColumn =
+    ui::group(ui::Axis::VERTICAL, kSettingsColumnNodes, 14);
+
+constexpr ui::Node kSettingsTree =
+    ui::proxy(kSettingsColumn, ui::Insets{20, 24, 20, 24});
+
+constexpr auto kSettingsControls = ui::layoutTree<5>(
+    kSettingsTree,
+    ui::Rect{0, 44, 520, 386}
 );
+
+static_assert(kSettingsControls.valid());
+static_assert(kSettingsControls.size() == 5);
+static_assert(kSettingsControls[0].frame.y == 64);
+static_assert(kSettingsControls[1].frame.y == 108);
+static_assert(kSettingsControls[2].frame.y == 142);
+static_assert(kSettingsControls[3].frame.y == 194);
+static_assert(kSettingsControls[4].frame.y == 228);
+static_assert(kSettingsControls[2].frame.width == 472);
 
 constexpr pippin_shell_item kSettingsItems[] = {
     shellItem(kSettingsControls[0]),
@@ -194,8 +245,6 @@ constexpr pippin_shell_item kTerminalItems[] = {
     shellItem(kTerminalControls[2]),
 };
 
-static_assert(kFilesControls[1].frame.width == 572);
-static_assert(kSettingsControls[2].frame.width == 472);
 static_assert(kTerminalControls[2].frame.width == 592);
 
 constexpr pippin_shell_surface kSurfaces[] = {

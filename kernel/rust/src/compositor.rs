@@ -52,6 +52,31 @@ struct Row {
     height: i32,
 }
 
+#[derive(Clone, Copy)]
+struct ClipRect {
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
+}
+
+impl ClipRect {
+    fn contains(self, x: i32, y: i32) -> bool {
+        x >= self.left && x < self.right && y >= self.top && y < self.bottom
+    }
+
+    fn intersect(self, x: i32, y: i32, width: i32, height: i32)
+        -> Option<(i32, i32, i32, i32)> {
+        if width <= 0 || height <= 0 { return None; }
+        let left = x.max(self.left);
+        let top = y.max(self.top);
+        let right = x.saturating_add(width).min(self.right);
+        let bottom = y.saturating_add(height).min(self.bottom);
+        if right <= left || bottom <= top { return None; }
+        Some((left, top, right - left, bottom - top))
+    }
+}
+
 #[derive(Clone)]
 struct Window {
     id: String,
@@ -356,9 +381,39 @@ impl Compositor {
         (action, events)
     }
 
+    fn content_clip(window: &Window) -> ClipRect {
+        let top = if matches!(window.role, b'W' | b'L') {
+            window.y + HEADER_HEIGHT + 1
+        } else {
+            window.y
+        };
+
+        ClipRect {
+            left: window.x + if matches!(window.role, b'W' | b'L') { 1 } else { 0 },
+            top,
+            right: window.x + window.width
+                - if matches!(window.role, b'W' | b'L') { 1 } else { 0 },
+            bottom: window.y + window.height
+                - if matches!(window.role, b'W' | b'L') { 1 } else { 0 },
+        }
+    }
+
     fn control_at(&self, x: i32, y: i32) -> Option<(String, usize)> {
         for window in self.windows.iter().rev() {
             if window.minimized { continue; }
+
+            // Only the topmost surface under the pointer participates. Empty
+            // space in that surface must occlude controls in windows below it.
+            if x < window.x || x >= window.x + window.width
+                || y < window.y || y >= window.y + window.height {
+                continue;
+            }
+
+            let clip = Self::content_clip(window);
+            if !clip.contains(x, y) {
+                return None;
+            }
+
             let local_x = x - window.x;
             let local_y = y - window.y;
             for (index, row) in window.rows.iter().enumerate() {
@@ -372,6 +427,8 @@ impl Compositor {
                     return Some((window.id.clone(), index));
                 }
             }
+
+            return None;
         }
         None
     }
@@ -831,6 +888,8 @@ impl Compositor {
         self.text(title_x, window.y + 15, &window.title, 2,
                   if focused { CHROME_INK } else { 0x006f777d });
 
+        let content_clip = Self::content_clip(&window);
+
         for (index, row) in window.rows.iter().enumerate() {
             let managed = row.width > 0 && row.height > 0;
             let x = window.x + if managed { row.x } else { 24 };
@@ -838,7 +897,9 @@ impl Compositor {
             let width = if managed { row.width } else { window.width - 48 };
             let height = if managed { row.height } else { 34 };
 
-            if y >= window.y + window.height { break; }
+            if content_clip.intersect(x, y, width, height).is_none() {
+                continue;
+            }
 
             let (hovered, pressed, control_focused) = self.control_state(&window.id, index);
             let disabled = row.flags & CONTROL_FLAG_DISABLED != 0;
@@ -862,37 +923,46 @@ impl Compositor {
 
             match row.kind {
                 b'h' => {
-                    self.text(x + 4, y + ((height - 14) / 2).max(0),
-                              &row.text, 2, ink);
-                    self.fill_rect(x, y + height - 2, width, 1, 0x00d5d9dc);
+                    self.text_clipped(x + 4, y + ((height - 14) / 2).max(0),
+                                      &row.text, 2, ink, content_clip);
+                    self.fill_rect_clipped(x, y + height - 2, width, 1,
+                                           0x00d5d9dc, content_clip);
                 }
                 b's' => {
-                    self.rounded_rect(x, y, width, height, surface, border);
-                    self.text(x + 14, y + ((height - 14) / 2).max(0),
-                              &row.text, 2, if disabled { 0x0090999f } else { 0x00777f85 });
+                    self.rounded_rect_clipped(x, y, width, height, surface, border, content_clip);
+                    self.text_clipped(x + 14, y + ((height - 14) / 2).max(0),
+                                      &row.text, 2,
+                                      if disabled { 0x0090999f } else { 0x00777f85 },
+                                      content_clip);
                 }
                 b't' => {
                     if !row.action.is_empty() {
-                        self.rounded_rect(x, y, width, height, surface, border);
+                        self.rounded_rect_clipped(x, y, width, height, surface, border, content_clip);
                     }
-                    self.text(x + 14, y + ((height - 14) / 2).max(0),
-                              &row.text, 2, ink);
+                    self.text_clipped(x + 14, y + ((height - 14) / 2).max(0),
+                                      &row.text, 2, ink, content_clip);
                     let track_w = 38;
                     let track_h = 20;
                     let tx = x + width - track_w - 14;
                     let ty = y + (height - track_h) / 2;
-                    self.rounded_rect(tx, ty, track_w, track_h,
-                                      if disabled { 0x00cfd4d7 } else { 0x00c8cdd1 },
-                                      0x00adb5ba);
-                    self.rounded_rect(tx + 3, ty + 3, 14, 14,
-                                      0x00ffffff, 0x00ffffff);
+                    self.rounded_rect_clipped(
+                        tx, ty, track_w, track_h,
+                        if disabled { 0x00cfd4d7 } else { 0x00c8cdd1 },
+                        0x00adb5ba,
+                        content_clip
+                    );
+                    self.rounded_rect_clipped(
+                        tx + 3, ty + 3, 14, 14,
+                        0x00ffffff, 0x00ffffff,
+                        content_clip
+                    );
                 }
                 _ => {
                     if !row.action.is_empty() {
-                        self.rounded_rect(x, y, width, height, surface, border);
+                        self.rounded_rect_clipped(x, y, width, height, surface, border, content_clip);
                     }
-                    self.text(x + 14, y + ((height - 14) / 2).max(0),
-                              &row.text, 2, ink);
+                    self.text_clipped(x + 14, y + ((height - 14) / 2).max(0),
+                                      &row.text, 2, ink, content_clip);
                 }
             }
         }
@@ -978,6 +1048,42 @@ impl Compositor {
         }
     }
 
+    fn fill_rect_clipped(&mut self, x: i32, y: i32, width: i32, height: i32,
+                         color: u32, clip: ClipRect) {
+        if let Some((x, y, width, height)) = clip.intersect(x, y, width, height) {
+            self.fill_rect(x, y, width, height, color);
+        }
+    }
+
+    fn border_clipped(&mut self, x: i32, y: i32, width: i32, height: i32,
+                      color: u32, clip: ClipRect) {
+        self.fill_rect_clipped(x, y, width, 2, color, clip);
+        self.fill_rect_clipped(x, y + height - 2, width, 2, color, clip);
+        self.fill_rect_clipped(x, y, 2, height, color, clip);
+        self.fill_rect_clipped(x + width - 2, y, 2, height, color, clip);
+    }
+
+    fn rounded_rect_clipped(&mut self, x: i32, y: i32, width: i32, height: i32,
+                            fill: u32, border: u32, clip: ClipRect) {
+        if width < 8 || height < 8 {
+            self.fill_rect_clipped(x, y, width, height, fill, clip);
+            self.border_clipped(x, y, width, height, border, clip);
+            return;
+        }
+
+        self.fill_rect_clipped(x + 4, y, width - 8, 1, border, clip);
+        self.fill_rect_clipped(x + 2, y + 1, width - 4, 1, border, clip);
+        self.fill_rect_clipped(x + 1, y + 2, width - 2, 1, border, clip);
+        self.fill_rect_clipped(x, y + 3, width, height - 6, border, clip);
+        self.fill_rect_clipped(x + 1, y + height - 3, width - 2, 1, border, clip);
+        self.fill_rect_clipped(x + 2, y + height - 2, width - 4, 1, border, clip);
+        self.fill_rect_clipped(x + 4, y + height - 1, width - 8, 1, border, clip);
+
+        self.fill_rect_clipped(x + 4, y + 1, width - 8, height - 2, fill, clip);
+        self.fill_rect_clipped(x + 2, y + 2, width - 4, height - 4, fill, clip);
+        self.fill_rect_clipped(x + 1, y + 3, width - 2, height - 6, fill, clip);
+    }
+
     fn rounded_rect(&mut self, x: i32, y: i32, width: i32, height: i32,
                     fill: u32, border: u32) {
         if width < 8 || height < 8 {
@@ -1006,6 +1112,27 @@ impl Compositor {
         self.fill_rect(x, y + height - 2, width, 2, color);
         self.fill_rect(x, y, 2, height, color);
         self.fill_rect(x + width - 2, y, 2, height, color);
+    }
+
+    fn text_clipped(&mut self, x: i32, y: i32, label: &str, scale: i32,
+                    color: u32, clip: ClipRect) {
+        for (index, byte) in label.bytes().enumerate() {
+            let glyph = glyph(byte.to_ascii_uppercase());
+            for (row, bits) in glyph.iter().enumerate() {
+                for column in 0..5 {
+                    if bits & (1 << (4 - column)) != 0 {
+                        self.fill_rect_clipped(
+                            x + index as i32 * 6 * scale + column * scale,
+                            y + row as i32 * scale,
+                            scale,
+                            scale,
+                            color,
+                            clip,
+                        );
+                    }
+                }
+            }
+        }
     }
 
     fn text(&mut self, x: i32, y: i32, label: &str, scale: i32, color: u32) {

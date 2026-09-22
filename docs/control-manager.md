@@ -130,7 +130,8 @@ button group can itself be one fixed-height child inside a vertical column.
 The tree is flattened **before** the shell ABI boundary. Rust still receives the
 same ABI v3 leaf controls, so Group/Proxy internals stay a C++ toolkit detail.
 
-The Launcher is the first tree-based surface:
+Launcher, Files, and Settings now use retained trees. Launcher was the first
+tree-based surface:
 
 ```text
 Proxy (content insets)
@@ -146,6 +147,56 @@ Proxy (content insets)
 The horizontal action group uses grow-weighted children, while the Proxy owns
 the window content padding. This is the first Pippin surface whose visible
 controls come from nested layout rather than one flat flow.
+
+## Section trees
+
+Files and Settings now use the same retained composition model instead of flat
+vertical arrays.
+
+Files is structured as:
+
+```text
+Proxy
+└── Vertical Group
+    ├── Home heading
+    ├── Search box
+    └── Horizontal Group
+        ├── Documents
+        └── Downloads
+```
+
+Settings uses nested vertical section groups:
+
+```text
+Proxy
+└── Vertical Group
+    ├── Settings heading
+    ├── Appearance Group
+    │   ├── Appearance heading
+    │   └── Animations toggle
+    └── Desktop Group
+        ├── Desktop heading
+        └── Show dock toggle
+```
+
+Each tree has compile-time capacity and geometry assertions, including
+`TreeLayout::valid()`, so overflow or unexpected layout math fails loudly
+instead of silently dropping controls.
+
+## Content clipping and occlusion
+
+Native window controls are clipped to the content area below the title bar.
+The compositor now has clipped rectangle, border, rounded-rectangle, and text
+drawing helpers. This prevents future long or scrolled layouts from painting
+over window chrome or outside the window frame.
+
+Pointer hit-testing follows the same surface boundary rule. Once the pointer is
+inside the topmost visible surface, controls in lower windows are no longer
+eligible. Empty space in a foreground window therefore correctly occludes
+buttons behind it instead of allowing click/hover fall-through.
+
+This is clipping groundwork, not scrolling itself yet. Scroll offsets and
+runtime relayout can build on the same content rectangle later.
 
 ## Semantic controls
 
@@ -274,10 +325,9 @@ the C++ shell moves fully into ring-3 ELF processes.
 
 The Control Manager should stay focused:
 
-1. migrate Settings and Files to nested groups where section structure benefits
-   from it
-2. add scrolling/content clipping for longer layouts
-3. add per-control editable/search state instead of static text placeholders
-4. add runtime relayout so maximized/resized windows can recompute their trees
+1. add scroll offsets and input on top of the new content clipping boundary
+2. add per-control editable/search state instead of static text placeholders
+3. add runtime relayout so maximized/resized windows can recompute their trees
+4. migrate Terminal to retained nodes and editable text input
 5. once user apps can own surfaces directly, move this same C++ manager into the
    native app/toolkit layer
