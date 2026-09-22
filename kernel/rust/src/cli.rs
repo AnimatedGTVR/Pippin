@@ -179,8 +179,16 @@ impl Shell {
                     } else if self.shift { shifted } else { plain }
                 })
             } else { None };
-            if let Some(desktop) = &self.desktop {
-                for event in desktop.key_scancode(scan, text) { self.bridge.event(event); }
+            let desktop_output = if let Some(desktop) = &mut self.desktop {
+                Some(desktop.key_scancode(scan, text, self.shift))
+            } else {
+                None
+            };
+            if let Some((action, events)) = desktop_output {
+                if let Some(action) = action {
+                    self.handle_desktop_action(&action);
+                }
+                for event in events { self.bridge.event(event); }
             }
             return;
         }
