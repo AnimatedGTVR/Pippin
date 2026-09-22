@@ -45,17 +45,18 @@ deeper dive into one slice: [build](build.md), [boot](boot.md),
 | Subsystems       | C++      | ACPI/PCI, disks, filesystem, graphics/compositor plumbing, the C++ half of the Toolbox, driver framework |
 | Glue / ABI       | C        | libc-style stubs (`memset`, `memcpy`, `strlen`, …), a stable shim layer for anything that wants a plain C ABI |
 | Drivers          | C++      | Concrete device drivers implementing the `pippin::drv::Driver` interface |
-| Applications (later) | C++ then C# | Native Toolbox apps in C++; later a managed (AOT) C# runtime hosts the desktop shell **on the x86-64 port only** |
+| Desktop shell (later) | C++ and Rust | Native shell, desktop services, and Toolbox clients |
+| Applications (later) | C++ and Rust; optional C# | Native Toolbox apps first; optional managed C# apps use Toolbox bindings on x86-64 |
 
 Future note — **68k**: the planned Motorola 68k port keeps Assembly + Rust + C++
-(kernel) and C++ (drivers). C# does not follow to 68k; it is an x86-64 desktop
-concern.
+(kernel) and C++ (drivers), with a C++ and Rust desktop. Optional C# app support
+does not follow to 68k.
 
 ## 4. Layered architecture
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
-│  APPS (later): C# shell apps + C++ Toolbox apps              │
+│  APPS (later): C++/Rust shell and apps; optional C# apps      │
 │  → event loop, Window/Menu/Control managers, Resource Mgr    │
 ├───────────────────────────────────────────────────────────────┤
 │  TOOLBOX API  (the "Macintosh-style" service surface)        │
@@ -175,7 +176,7 @@ Pippin/
 │   ├── rust/               # Rust kernel core: serial, cpu, mem, ffi
 │   └── linker.ld
 ├── drivers/cpp/            # C++ driver layer
-├── apps/                   # future (C++ then C#)
+├── apps/                   # future C++/Rust apps; optional C# bindings
 └── scripts/                # run-qemu.sh, make-iso.sh
 ```
 
@@ -190,4 +191,4 @@ loads a 64-bit GDT → jumps to `kernel_entry` (C++) → constructors →
 
 See [milestones.md](milestones.md). Short version: M0 skeleton (this), M1 core
 memory+interrupts+Limine, M2 processes+syscalls+IPC, M3 drivers, M4 GUI, M5 C++
-apps, M6 C# desktop on x86-64, M7 68k study.
+apps, M6 optional C# apps on x86-64, M7 68k study.

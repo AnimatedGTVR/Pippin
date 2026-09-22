@@ -40,11 +40,12 @@ Managers that make Pippin feel like a Mac:
   scheduling trivially safe.
 - **Handle-based resources** (the Resource Manager) so apps and the shell can
   be swapped without pointer invalidation.
-- **C++ apps** at Milestone 5 using a small Toolbox client library
-  (`apps/cpp/` becomes a real tree here with `PIpinToolbox.hh`-style headers).
-- **C# desktop (x86-64 only, Milestone 6):** an AOT-managed runtime hosts the
-  shell and higher-level apps. C# is intentionally an x86-64-desktop-only
-  concern — it does not affect the 68k port or the kernel.
+- **C++ and Rust shell and apps:** the desktop shell uses native Toolbox APIs.
+  At Milestone 5, C++ apps use a small Toolbox client library, and Rust apps
+  use bindings to the same stable C ABI.
+- **Optional C# apps (x86-64 only, Milestone 6):** a managed runtime and
+  Toolbox bindings can support C# GUI applications. The shell does not depend
+  on C#, and C# support does not affect the 68k port or kernel.
 
 ## Aesthetic notes
 

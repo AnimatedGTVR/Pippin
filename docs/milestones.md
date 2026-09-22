@@ -50,28 +50,29 @@ in `make run` output and hold steady.
 - [ ] Window Manager: z-order, drag/resize, dirty regions
 - [ ] Menu Manager (fixed menu bar), Control Manager (owner-drawn widgets)
 - [ ] Resource Manager: typed blobs, fonts, themes
-- [ ] Retro desktop: menu bar, click-to-focus windows, desktop background
+- [ ] C++ and Rust desktop shell: menu bar, click-to-focus windows, desktop background
 
-## M5 — C++ Apps
+## M5 — Native Apps
 
-- [ ] `apps/cpp/` becomes a real application tree; `PIPPIN_BUILD_APPS=ON`
+- [ ] `apps/cpp/` and `apps/rust/` become application trees; `PIPPIN_BUILD_APPS=ON`
 - [ ] Toolbox client library for native apps (windows, menus, controls)
+- [ ] Rust bindings to the same stable Toolbox C ABI
 - [ ] Sample: a bitmap/text editor that can load/save via the File Manager
 
-## M6 — C# desktop (x86-64 only)
+## M6 — Optional C# Apps (x86-64 only)
 
-- [ ] AOT-managed runtime in `apps/csharp/`; shell apps in C#
-- [ ] C# via `P/Invoke`-style extern "C" thunks into the Toolbox ABI
-- [ ] Desktop shell (menu bar, app switcher) in C#, native tools in C++
+- [ ] Evaluate a managed runtime for optional apps in `apps/csharp/`
+- [ ] C# bindings to the Toolbox ABI for windows, controls, and events
+- [ ] Sample C# GUI app alongside native C++ and Rust apps
 
 ## M7 — 68k study
 
 - [ ] Feasibility: kernel core (Rust) + C++ subsystem split on 68k
 - [ ] Decide: 68k as an emulated target (Retro68/QEMU) vs physical
-- [ ] C# explicitly excluded from the 68k platform
+- [ ] Keep optional C# application support outside the 68k platform
 
 ## Skipping notes
 
-- C# is *not* added before M6 and does not follow to 68k.
+- C# app support is optional, begins no earlier than M6, and does not follow to 68k.
 - The kernel core stays `no_std`, dependency-free, and float-free forever —
   that discipline is what makes M7 plausible.

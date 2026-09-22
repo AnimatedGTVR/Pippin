@@ -2,7 +2,7 @@
 
 A retro-styled, Macintosh-inspired desktop operating system. Single-user, GUI-first,
 built with a mix of **Assembly**, **Rust**, **C++** and **C** in the kernel, **C++**
-drivers, and (on the x86-64 desktop, later) **C#** applications.
+drivers, a **C++ and Rust** desktop, and optional **C#** applications later.
 
 > Pippin is currently at **Milestone 0**: a wired project skeleton that builds a
 > kernel ELF which boots under QEMU and talks over the serial console. See
@@ -19,7 +19,7 @@ drivers, and (on the x86-64 desktop, later) **C#** applications.
 | `kernel/c/`                      | C glue: libc-style stubs used by C++ and Rust        |
 | `drivers/cpp/`                   | C++ driver layer (PCI stub today)                    |
 | `boot/`                          | Bootloader config (Limine, for the later migration)  |
-| `apps/`                          | Future application layer (C++, then C#)              |
+| `apps/`                          | Future application layer (C++ and Rust; optional C#) |
 | `scripts/`                       | QEMU / ISO helper scripts                            |
 
 ## Build
@@ -44,8 +44,9 @@ Pippin is organized like the classic Macintosh Toolbox: a collection of cooperat
 "Managers" (Memory, Processor, Event, File, Driver, Display, Window, Menu, Control,
 Resource) wrapped around a small preemptive kernel core. Assembly owns boot and the CPU
 trampolines, Rust owns the safety-critical core (memory, interrupts, scheduling, IPC),
-C++ owns subsystems and drivers, C provides ABI-shim glue, and a future C# runtime hosts
-the desktop shell. The full picture lives in [docs/architecture.md](docs/architecture.md).
+C++ owns subsystems and drivers, C provides ABI-shim glue, and the future desktop
+shell uses C++ and Rust. Optional C# apps can use the same Toolbox API. The full
+picture lives in [docs/architecture.md](docs/architecture.md).
 
 ## Roadmap
 
@@ -54,5 +55,6 @@ the desktop shell. The full picture lives in [docs/architecture.md](docs/archite
 - **M2 — Processes:** scheduler, syscall ABI, IPC ports.
 - **M3 — Drivers:** ACPI/PCI, PS/2, VESA framebuffer, disk.
 - **M4 — GUI:** compositor, window/menu/control managers, retro desktop.
-- **M5 — Apps:** C++ applications; later a C# shell for x86-64.
-- **M6 — 68k:** Motorola 68000 feasibility port.
+- **M5 — Apps:** C++ and Rust applications using the Toolbox API.
+- **M6 — Optional C# apps:** managed apps using the Toolbox API on x86-64.
+- **M7 — 68k:** Motorola 68000 feasibility port.

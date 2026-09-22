@@ -9,8 +9,8 @@
 # All of it is linked into a single freestanding ELF by `ld`.
 #
 # The driver layer stays in this build until app-land exists; turn on
-# PIPPIN_BUILD_APPS at Milestone 5 to add C++ applications (and later C#
-# via a managed runtime on the x86-64 desktop).
+# PIPPIN_BUILD_APPS at Milestone 5 to add native C++ and Rust applications.
+# Optional C# application support may follow on the x86-64 desktop.
 
 cmake_minimum_required(VERSION 3.20)
 project(Pippin VERSION 0.1.0 LANGUAGES ASM C CXX)
@@ -21,7 +21,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE OFF)
 
-option(PIPPIN_BUILD_APPS "Build the future C++ application layer" OFF)
+option(PIPPIN_BUILD_APPS "Build the future native application layer" OFF)
 
 # ---- Freestanding codegen rules shared by every kernel/driver source ----
 # -mcmodel=large: the kernel links at KERNEL_VMA_BASE (0xFFFF800000000000),
