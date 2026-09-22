@@ -15,20 +15,20 @@ SECTIONS
     . = ALIGN(0x1000);
     .text :
     {
-        *(.text .text.*)
-        *(.rodata .rodata.*)
+        *(.text .text.* .ltext .ltext.*)
+        *(.rodata .rodata.* .lrodata .lrodata.*)
     } :text
 
     . = ALIGN(0x1000);
     .data :
     {
-        *(.data .data.*)
+        *(.data .data.* .ldata .ldata.*)
     } :data
 
     . = ALIGN(16);
     .bss (NOLOAD) :
     {
-        *(.bss .bss.*)
+        *(.bss .bss.* .lbss .lbss.*)
         *(COMMON)
     } :data
 
