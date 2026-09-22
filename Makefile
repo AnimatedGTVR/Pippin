@@ -13,7 +13,7 @@ specs: preflight
 
 kernel: preflight
 	cmake -S . -B $(BUILD_DIR) -G "Unix Makefiles"
-	bash -c 'source "$(BUILD_DIR)/pippin-limits.env"; cmake --build "$(BUILD_DIR)" --target kernel.elf -j"$PIPPIN_BUILD_JOBS"'
+	bash -c 'source "$(BUILD_DIR)/pippin-limits.env"; cmake --build "$(BUILD_DIR)" --target kernel.elf -j"$$PIPPIN_BUILD_JOBS"'
 
 run: kernel
 	dotnet build apps/csharp/Pippin.Shell/Pippin.Shell.csproj
@@ -40,7 +40,7 @@ run-disk: kernel disk
 
 iso: preflight
 	cmake -S . -B $(BUILD_DIR) -G "Unix Makefiles"
-	bash -c 'source "$(BUILD_DIR)/pippin-limits.env"; cmake --build "$(BUILD_DIR)" --target kernel-limine.elf -j"$PIPPIN_BUILD_JOBS"'
+	bash -c 'source "$(BUILD_DIR)/pippin-limits.env"; cmake --build "$(BUILD_DIR)" --target kernel-limine.elf -j"$$PIPPIN_BUILD_JOBS"'
 	./scripts/make-iso.sh
 
 clean:
