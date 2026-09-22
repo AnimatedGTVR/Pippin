@@ -34,15 +34,22 @@ to run it. `make iso` also needs Limine and `xorriso`.
 
 ```sh
 make                # configure + build build/kernel.elf
-make run            # boot the full Pippin desktop + C# shell in QEMU
+make run            # boot full desktop using QEMU's normal frontend
 make run-shell      # alias for make run
 make run-ui         # two independent C# apps using the new window API
 make run-headless   # serial console only
 make run-disk       # QEMU window with the FAT32 Hello bundle disk
-make run-gdb        # boot under QEMU with a GDB stub on :1234
+make run-gdb        # normal QEMU frontend + GDB stub on :1234
 make iso            # build the Limine BIOS/UEFI ISO
 make clean
 ```
+
+The Makefile defaults GUI runs to `QEMU_MODE=--defaultqemu`, which leaves display
+frontend selection to QEMU instead of forcing Pippin's stripped GTK frontend.
+Override it with `make run QEMU_MODE=` if you want the custom GTK mode instead.
+Because Pippin currently uses a relative PS/2 mouse, QEMU may still grab pointer
+input while interacting with the guest; a truly grab-free absolute pointer will
+require a USB/virtio tablet input driver in Pippin.
 
 See [docs/build.md](docs/build.md) for the full toolchain and ISO setup.
 

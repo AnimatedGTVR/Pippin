@@ -1,5 +1,6 @@
 # Pippin top-level convenience targets.
 BUILD_DIR ?= build
+QEMU_MODE ?= --defaultqemu
 
 .PHONY: all kernel run run-shell run-ui run-headless run-gdb run-disk disk iso clean distclean
 
@@ -11,26 +12,26 @@ kernel:
 
 run: kernel
 	dotnet build apps/csharp/Pippin.Shell/Pippin.Shell.csproj
-	./scripts/run-qemu.sh --shell
+	./scripts/run-qemu.sh $(QEMU_MODE) --shell
 
 run-shell: run
 
 run-ui: kernel
 	dotnet build apps/csharp/Pippin.Broker/Pippin.Broker.csproj
 	dotnet build apps/csharp/Pippin.Examples/Pippin.Examples.csproj
-	./scripts/run-ui.sh
+	PIPPIN_QEMU_MODE="$(QEMU_MODE)" ./scripts/run-ui.sh
 
 run-headless: kernel
 	./scripts/run-qemu.sh --headless
 
 run-gdb: kernel
-	./scripts/run-qemu.sh --gdb
+	./scripts/run-qemu.sh $(QEMU_MODE) --gdb
 
 disk:
 	./scripts/make-fat-image.sh
 
 run-disk: kernel disk
-	./scripts/run-qemu.sh --disk
+	./scripts/run-qemu.sh $(QEMU_MODE) --disk
 
 iso:
 	cmake -S . -B $(BUILD_DIR) -G "Unix Makefiles"
