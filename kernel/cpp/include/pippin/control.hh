@@ -296,4 +296,223 @@ constexpr ControlSet<N> flow(Flow layout, const ControlSpec (&specs)[N]) {
     return out;
 }
 
+
+
+// ---------------------------------------------------------------------------
+// Retained node composition
+//
+// The flat ControlSpec/flow API remains useful for tiny surfaces. Larger UI can
+// now be expressed as a retained tree that is flattened only after layout.
+// This mirrors the useful part of Karm's Leaf / Group / Proxy split without
+// pulling dynamic allocation or virtual dispatch into Pippin's bootstrap UI.
+
+enum class NodeKind : uint8_t {
+    LEAF,
+    GROUP,
+    PROXY,
+};
+
+struct NodeLayout {
+    int32_t basis{};
+    uint8_t grow{};
+    int32_t crossBasis{};
+    Align crossAlign{Align::FILL};
+};
+
+struct Node {
+    NodeKind kind{NodeKind::LEAF};
+    NodeLayout layout{};
+    ControlSpec control{"", "", 0, ControlStyle::PLAIN, 0, 0, 0, 0, Align::FILL};
+    Axis axis{Axis::HORIZONTAL};
+    int32_t gap{};
+    Insets insets{};
+    const Node* children{};
+    size_t childCount{};
+    const Node* child{};
+};
+
+constexpr NodeLayout nodeLayout(ControlSpec const& spec) {
+    return {
+        spec.basis,
+        spec.grow,
+        spec.crossBasis,
+        spec.crossAlign,
+    };
+}
+
+constexpr Node leaf(ControlSpec spec) {
+    return {
+        NodeKind::LEAF,
+        nodeLayout(spec),
+        spec,
+        Axis::HORIZONTAL,
+        0,
+        {},
+        nullptr,
+        0,
+        nullptr,
+    };
+}
+
+template <size_t N>
+constexpr Node group(Axis axis, const Node (&children)[N], int32_t gap = 0) {
+    return {
+        NodeKind::GROUP,
+        {0, 1, 0, Align::FILL},
+        {"", "", 0, ControlStyle::PLAIN, 0, 0, 0, 0, Align::FILL},
+        axis,
+        gap,
+        {},
+        children,
+        N,
+        nullptr,
+    };
+}
+
+constexpr Node proxy(const Node& child, Insets insets) {
+    return {
+        NodeKind::PROXY,
+        child.layout,
+        {"", "", 0, ControlStyle::PLAIN, 0, 0, 0, 0, Align::FILL},
+        Axis::HORIZONTAL,
+        0,
+        insets,
+        nullptr,
+        0,
+        &child,
+    };
+}
+
+// Node sizing decorators use the same vocabulary as ControlSpec decorators.
+// They modify the node's relationship with its parent, not its descendants.
+constexpr Node fixed(Node node, int32_t basis) {
+    node.layout.basis = nonNegative(basis);
+    node.layout.grow = 0;
+    return node;
+}
+
+constexpr Node grow(Node node, uint8_t weight = 1, int32_t basis = 0) {
+    node.layout.basis = nonNegative(basis);
+    node.layout.grow = weight;
+    return node;
+}
+
+constexpr Node cross(Node node, int32_t size, Align align = Align::CENTER) {
+    node.layout.crossBasis = nonNegative(size);
+    node.layout.crossAlign = align;
+    return node;
+}
+
+template <size_t N>
+struct TreeLayout {
+    Control items[N]{};
+    size_t count{};
+
+    constexpr size_t size() const { return count; }
+    constexpr const Control* data() const { return items; }
+    constexpr const Control& operator[](size_t index) const { return items[index]; }
+};
+
+constexpr Rect alignNodeCross(Axis axis, Rect parent, Rect cell,
+                              NodeLayout const& layout) {
+    if (layout.crossBasis <= 0 || layout.crossAlign == Align::FILL)
+        return cell;
+
+    const int32_t available =
+        axis == Axis::HORIZONTAL ? parent.height : parent.width;
+    const int32_t size =
+        layout.crossBasis < available ? layout.crossBasis : available;
+
+    int32_t start = axis == Axis::HORIZONTAL ? parent.y : parent.x;
+    if (layout.crossAlign == Align::CENTER)
+        start += (available - size) / 2;
+    else if (layout.crossAlign == Align::END)
+        start += available - size;
+
+    if (axis == Axis::HORIZONTAL) {
+        cell.y = start;
+        cell.height = size;
+    } else {
+        cell.x = start;
+        cell.width = size;
+    }
+    return cell;
+}
+
+template <size_t Capacity>
+constexpr void layoutNode(const Node& node, Rect frame,
+                          TreeLayout<Capacity>& out) {
+    if (node.kind == NodeKind::LEAF) {
+        if (out.count < Capacity) {
+            out.items[out.count++] = {
+                node.control.text,
+                node.control.action,
+                node.control.kind,
+                node.control.style,
+                node.control.flags,
+                frame,
+            };
+        }
+        return;
+    }
+
+    if (node.kind == NodeKind::PROXY) {
+        if (node.child)
+            layoutNode(*node.child, inset(frame, node.insets), out);
+        return;
+    }
+
+    if (!node.children || node.childCount == 0)
+        return;
+
+    int32_t fixedTotal = 0;
+    uint32_t growTotal = 0;
+    for (size_t i = 0; i < node.childCount; ++i) {
+        fixedTotal += node.children[i].layout.basis;
+        growTotal += node.children[i].layout.grow;
+    }
+
+    const int32_t mainSize =
+        node.axis == Axis::HORIZONTAL ? frame.width : frame.height;
+    const int32_t gaps =
+        node.childCount > 1 ? node.gap * static_cast<int32_t>(node.childCount - 1) : 0;
+    int32_t remaining = mainSize - fixedTotal - gaps;
+    if (remaining < 0)
+        remaining = 0;
+
+    int32_t cursor = node.axis == Axis::HORIZONTAL ? frame.x : frame.y;
+    int32_t assignedGrow = 0;
+    uint32_t usedGrow = 0;
+
+    for (size_t i = 0; i < node.childCount; ++i) {
+        const Node& child = node.children[i];
+        int32_t main = child.layout.basis;
+
+        if (child.layout.grow != 0 && growTotal != 0) {
+            usedGrow += child.layout.grow;
+            const int32_t target = static_cast<int32_t>(
+                (static_cast<int64_t>(remaining) * usedGrow) / growTotal);
+            main += target - assignedGrow;
+            assignedGrow = target;
+        }
+
+        Rect cell{};
+        if (node.axis == Axis::HORIZONTAL)
+            cell = {cursor, frame.y, main, frame.height};
+        else
+            cell = {frame.x, cursor, frame.width, main};
+
+        cell = alignNodeCross(node.axis, frame, cell, child.layout);
+        layoutNode(child, cell, out);
+        cursor += main + node.gap;
+    }
+}
+
+template <size_t Capacity>
+constexpr TreeLayout<Capacity> layoutTree(const Node& root, Rect frame) {
+    TreeLayout<Capacity> out{};
+    layoutNode(root, frame, out);
+    return out;
+}
+
 } // namespace pippin::ui

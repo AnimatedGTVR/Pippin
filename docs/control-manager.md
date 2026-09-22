@@ -108,6 +108,45 @@ constexpr auto controls = ui::flow(
 );
 ```
 
+## Retained node tree
+
+The manager now has a retained composition layer above flat `ControlSpec`
+arrays. It uses three node roles inspired by Karm's UI structure:
+
+- `Leaf` — one semantic control
+- `Group` — owns a sequence of child nodes and lays them out horizontally or
+  vertically
+- `Proxy` — wraps one child and transforms the frame before forwarding layout
+
+Pippin's implementation is intentionally static: no heap allocation, no virtual
+dispatch, and no runtime reconciliation yet. Nodes point at compile-time child
+arrays, and `layoutTree<N>()` recursively walks the tree into a fixed-capacity
+`TreeLayout<N>`.
+
+Node-level `fixed()`, `grow()`, and `cross()` decorators control how a
+whole subtree participates in its parent layout. That means a nested horizontal
+button group can itself be one fixed-height child inside a vertical column.
+
+The tree is flattened **before** the shell ABI boundary. Rust still receives the
+same ABI v3 leaf controls, so Group/Proxy internals stay a C++ toolkit detail.
+
+The Launcher is the first tree-based surface:
+
+```text
+Proxy (content insets)
+└── Vertical Group
+    ├── Applications heading
+    ├── Search box
+    └── Horizontal Group
+        ├── Files
+        ├── Settings
+        └── Terminal
+```
+
+The horizontal action group uses grow-weighted children, while the Proxy owns
+the window content padding. This is the first Pippin surface whose visible
+controls come from nested layout rather than one flat flow.
+
 ## Semantic controls
 
 On top of raw `ControlSpec`, the manager now provides small semantic
@@ -198,7 +237,8 @@ the C++ shell moves fully into ring-3 ELF processes.
 
 The Control Manager should stay focused:
 
-1. add reusable group/proxy node composition instead of flat control arrays
+1. migrate Settings and Files to nested groups where section structure benefits
+   from it
 2. add focus scopes for individual windows/dialogs
 3. add richer pointer semantics such as activate-on-release and drag cancellation
 4. add scrolling/content clipping for longer layouts
