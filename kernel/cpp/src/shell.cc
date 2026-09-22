@@ -3,48 +3,86 @@
 // C++ owns the shell model and layout. Rust owns composition/input. The two
 // sides meet only through the stable C ABI in <pippin/shell.h>.
 #include <pippin/shell.h>
+#include <pippin/control.hh>
 
 namespace pippin::shell {
 
+constexpr pippin_shell_item shellItem(ui::Control const& control) {
+    return {
+        control.text,
+        control.action,
+        control.kind,
+        static_cast<uint8_t>(control.style),
+        control.frame.x,
+        control.frame.y,
+        control.frame.width,
+        control.frame.height,
+    };
+}
+
+constexpr pippin_shell_item legacyItem(const char* text, const char* action, uint8_t kind) {
+    return {text, action, kind, PIPPIN_CONTROL_STYLE_PLAIN, 0, 0, 0, 0};
+}
+
 constexpr pippin_shell_item kPanelItems[] = {
-    {"Search", "launcher.open", 'b'},
-    {"Pippin", "", 'l'},
-    {"WiFi  Vol  Bat", "settings.open", 'b'},
+    legacyItem("Search", "launcher.open", 'b'),
+    legacyItem("Pippin", "", 'l'),
+    legacyItem("WiFi  Vol  Bat", "settings.open", 'b'),
 };
 
+constexpr ui::ControlSpec kDockSpecs[] = {
+    ui::fixed("Apps", "launcher.open", 'b', ui::ControlStyle::TILE, 104),
+    ui::fixed("Files", "files.open", 'b', ui::ControlStyle::TILE, 104),
+    ui::fixed("Settings", "settings.open", 'b', ui::ControlStyle::TILE, 104),
+};
+
+constexpr auto kDockControls = ui::flow(
+    ui::Flow{
+        .frame = {12, 8, 344, 52},
+        .axis = ui::Axis::HORIZONTAL,
+        .gap = 16,
+    },
+    kDockSpecs
+);
+
+static_assert(static_cast<uint8_t>(ui::ControlStyle::TILE) == PIPPIN_CONTROL_STYLE_TILE);
+static_assert(kDockControls[0].frame.x == 12 && kDockControls[0].frame.width == 104);
+static_assert(kDockControls[1].frame.x == 132 && kDockControls[1].frame.width == 104);
+static_assert(kDockControls[2].frame.x == 252 && kDockControls[2].frame.width == 104);
+
 constexpr pippin_shell_item kDockItems[] = {
-    {"Apps", "launcher.open", 'b'},
-    {"Files", "files.open", 'b'},
-    {"Settings", "settings.open", 'b'},
+    shellItem(kDockControls[0]),
+    shellItem(kDockControls[1]),
+    shellItem(kDockControls[2]),
 };
 
 constexpr pippin_shell_item kLauncherItems[] = {
-    {"Applications", "", 'h'},
-    {"Search apps", "launcher.search", 's'},
-    {"Files", "files.open", 'b'},
-    {"Settings", "settings.open", 'b'},
-    {"Terminal", "terminal.open", 'b'},
+    legacyItem("Applications", "", 'h'),
+    legacyItem("Search apps", "launcher.search", 's'),
+    legacyItem("Files", "files.open", 'b'),
+    legacyItem("Settings", "settings.open", 'b'),
+    legacyItem("Terminal", "terminal.open", 'b'),
 };
 
 constexpr pippin_shell_item kFilesItems[] = {
-    {"Home", "", 'h'},
-    {"Search files", "files.search", 's'},
-    {"Documents", "files.documents.open", 'b'},
-    {"Downloads", "files.downloads.open", 'b'},
+    legacyItem("Home", "", 'h'),
+    legacyItem("Search files", "files.search", 's'),
+    legacyItem("Documents", "files.documents.open", 'b'),
+    legacyItem("Downloads", "files.downloads.open", 'b'),
 };
 
 constexpr pippin_shell_item kSettingsItems[] = {
-    {"Settings", "", 'h'},
-    {"Appearance", "", 'h'},
-    {"Animations", "settings.animations.toggle", 't'},
-    {"Desktop", "", 'h'},
-    {"Show dock", "settings.dock.toggle", 't'},
+    legacyItem("Settings", "", 'h'),
+    legacyItem("Appearance", "", 'h'),
+    legacyItem("Animations", "settings.animations.toggle", 't'),
+    legacyItem("Desktop", "", 'h'),
+    legacyItem("Show dock", "settings.dock.toggle", 't'),
 };
 
 constexpr pippin_shell_item kTerminalItems[] = {
-    {"Pippin Terminal", "", 'h'},
-    {"Native C++ shell online.", "", 'l'},
-    {"pippin> ", "terminal.input", 's'},
+    legacyItem("Pippin Terminal", "", 'h'),
+    legacyItem("Native C++ shell online.", "", 'l'),
+    legacyItem("pippin> ", "terminal.input", 's'),
 };
 
 constexpr pippin_shell_surface kSurfaces[] = {
