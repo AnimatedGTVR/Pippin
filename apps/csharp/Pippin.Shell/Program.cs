@@ -212,7 +212,7 @@ internal sealed class HostBridge(string socketPath, Application[] clients)
             };
             var title = surface.Role == SurfaceRole.Wallpaper ? surface.Background : surface.Title;
             var rows = Flatten(surface.Content)
-                .Select(node => Safe(node.Text) + "@" + Safe(node.Action));
+                .Select(node => NodePrefix(node.Kind) + Safe(node.Text) + "@" + Safe(node.Action));
             await SendAsync(string.Join('|', "S", surface.Id, role, surface.X, surface.Y,
                 surface.Width, surface.Height, Safe(title), string.Join(';', rows)));
         }
@@ -239,6 +239,12 @@ internal sealed class HostBridge(string socketPath, Application[] clients)
             foreach (var child in node.Children)
                 foreach (var item in Flatten(child)) yield return item;
     }
+
+    private static string NodePrefix(string kind) => kind switch
+    {
+        "heading" => "h:", "search" => "s:", "toggle" => "t:",
+        "button" => "b:", _ => "l:"
+    };
 
     private static string Safe(string? text) => new((text ?? "").Where(c =>
         c is >= ' ' and <= '~' && c is not ('|' or ';' or '@')).ToArray());
