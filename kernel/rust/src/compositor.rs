@@ -493,16 +493,16 @@ impl Compositor {
     }
 
     fn place_edit_cursor(&mut self, window_id: &str, row: usize,
-                         local_x: i32, width: i32) {
+                         local_x: i32, width: i32, prefix_width: i32) {
         let index = self.ensure_edit_state(window_id, row);
-        let max_chars = (((width - 28).max(12)) / 12) as usize;
+        let max_chars = (((width - 28 - prefix_width).max(12)) / 12) as usize;
         let length = self.edits[index].value.len();
         let start = Self::edit_visible_start(
             length,
             self.edits[index].cursor,
             max_chars.max(1),
         );
-        let column = ((local_x - 14).max(0) / 12) as usize;
+        let column = ((local_x - 14 - prefix_width).max(0) / 12) as usize;
         self.edits[index].cursor = (start + column).min(length);
     }
 
@@ -993,6 +993,11 @@ impl Compositor {
                             row,
                             local_x - control.x,
                             control.width,
+                            if control.kind == b'e' {
+                                control.text.len() as i32 * 12
+                            } else {
+                                0
+                            },
                         );
                     }
                 } else {
@@ -1291,9 +1296,29 @@ impl Compositor {
                     let (value, cursor) = self.edit_snapshot(&window.id, index);
                     let text_x = x + 14;
                     let text_y = y + ((height - 14) / 2).max(0);
-                    let max_chars = (((width - 32).max(12)) / 12) as usize;
+                    let prefix_width = if row.kind == b'e' {
+                        row.text.len() as i32 * 12
+                    } else {
+                        0
+                    };
+                    let value_x = text_x + prefix_width;
+                    let max_chars =
+                        (((width - 32 - prefix_width).max(12)) / 12) as usize;
 
-                    if value.is_empty() {
+                    if row.kind == b'e' {
+                        // Generic text fields keep their declared text as a
+                        // permanent prefix. Terminal uses this for "pippin> ".
+                        self.text_clipped(
+                            text_x,
+                            text_y,
+                            &row.text,
+                            2,
+                            if disabled { 0x0090999f } else { 0x006f777d },
+                            content_clip,
+                        );
+                    } else if value.is_empty() {
+                        // Search controls use their declared text as a
+                        // placeholder which disappears once editing starts.
                         self.text_clipped(
                             text_x,
                             text_y,
@@ -1302,7 +1327,9 @@ impl Compositor {
                             if disabled { 0x0090999f } else { 0x00777f85 },
                             content_clip,
                         );
-                    } else {
+                    }
+
+                    if !value.is_empty() {
                         // Edited text is ASCII-only for now, so byte slicing is
                         // also character slicing. Keep the caret in the visible
                         // horizontal window for longer values.
@@ -1313,7 +1340,7 @@ impl Compositor {
                         );
                         let end = (start + max_chars).min(value.len());
                         self.text_clipped(
-                            text_x,
+                            value_x,
                             text_y,
                             &value[start..end],
                             2,
@@ -1329,7 +1356,7 @@ impl Compositor {
                             max_chars.max(1),
                         );
                         let caret_column = cursor.saturating_sub(start).min(max_chars);
-                        let caret_x = text_x + caret_column as i32 * 12;
+                        let caret_x = value_x + caret_column as i32 * 12;
                         self.fill_rect_clipped(
                             caret_x,
                             y + 8,
