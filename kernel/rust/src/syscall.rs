@@ -14,8 +14,6 @@ static USER_MAPPED: AtomicBool = AtomicBool::new(false);
 
 extern "C" {
     fn pippin_syscall_entry();
-    static pippin_user_demo_start: u8;
-    static pippin_user_demo_end: u8;
 }
 
 pub unsafe fn init() {
