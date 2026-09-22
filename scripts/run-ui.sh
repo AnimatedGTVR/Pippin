@@ -24,4 +24,5 @@ cleanup() {
 }
 trap cleanup EXIT
 
-"$ROOT/scripts/run-qemu.sh" --window-server
+read -r -a QEMU_MODE_ARGS <<< "${PIPPIN_QEMU_MODE:-}"
+"$ROOT/scripts/run-qemu.sh" "${QEMU_MODE_ARGS[@]}" --window-server
