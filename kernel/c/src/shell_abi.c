@@ -13,6 +13,11 @@ int pippin_shell_surface_valid(const pippin_shell_surface* surface) {
     for (size_t i = 0; i < surface->item_count; ++i) {
         const pippin_shell_item* item = &surface->items[i];
         if (!item->text || !item->action) return 0;
+        if (item->flags & ~(PIPPIN_CONTROL_FLAG_FOCUSABLE | PIPPIN_CONTROL_FLAG_DISABLED))
+            return 0;
+        if ((item->flags & PIPPIN_CONTROL_FLAG_DISABLED) &&
+            (item->flags & PIPPIN_CONTROL_FLAG_FOCUSABLE))
+            return 0;
 
         // A zero-sized frame means "legacy row layout" and remains valid while
         // surfaces migrate to the Control Manager one at a time.
