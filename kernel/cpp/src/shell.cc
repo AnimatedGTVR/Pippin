@@ -119,6 +119,7 @@ constexpr auto kLauncherControls = ui::layoutTree<5>(
     ui::Rect{0, 44, 500, 356}
 );
 
+static_assert(kLauncherControls.valid());
 static_assert(kLauncherControls.size() == 5);
 static_assert(kLauncherControls[0].frame.y == 64);
 static_assert(kLauncherControls[1].frame.y == 106);
