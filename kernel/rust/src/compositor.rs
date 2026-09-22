@@ -143,6 +143,13 @@ impl Compositor {
             }
             return true;
         }
+        if let Some(id) = line.strip_prefix("M|") {
+            if let Some(window) = self.windows.iter_mut().find(|window| window.id == id) {
+                window.minimized = true;
+                self.render();
+            }
+            return true;
+        }
         if let Some(id) = line.strip_prefix("X|") {
             self.windows.retain(|window| window.id != id);
             if id == "wallpaper" { self.wallpaper_base = 0x002f80ed; }
