@@ -149,10 +149,15 @@ unsafe fn schedule(frame: *mut IntFrame, requeue: bool) -> *mut IntFrame {
 }
 
 /// Add one ring-3 thread to the run queue after its code and stack are mapped.
-pub fn spawn_user(rip: u64, user_rsp: u64, port: u16) {
+pub fn spawn_user(rip: u64, user_rsp: u64, port: u16) -> bool {
     let flags = cpu::irq_save();
+    let mut spawned = false;
     unsafe {
         let index = 3;
+        if TASKS[index].state != 0 && TASKS[index].state != DEAD {
+            cpu::irq_restore(flags);
+            return false;
+        }
         let task = &mut TASKS[index];
         let top = ((task.stack.0.as_mut_ptr() as usize + STACK_SIZE) & !15) - 8;
         let frame = (top - core::mem::size_of::<IntFrame>()) as *mut IntFrame;
@@ -175,9 +180,12 @@ pub fn spawn_user(rip: u64, user_rsp: u64, port: u16) {
             event_port: port,
             zone: 0,
         };
+        task.ticks = 0;
         enqueue(index);
+        spawned = true;
     }
     cpu::irq_restore(flags);
+    spawned
 }
 
 /// Called only from the timer interrupt with interrupts masked.
