@@ -825,7 +825,8 @@ impl Compositor {
             for (index, row) in window.rows.iter().enumerate() {
                 if row.width <= 0 || row.height <= 0
                     || row.action.is_empty()
-                    || row.flags & CONTROL_FLAG_DISABLED != 0 {
+                    || row.flags & CONTROL_FLAG_DISABLED != 0
+                    || !self.row_visible(window, index, row) {
                     continue;
                 }
                 if local_x >= row.x && local_x < row.x + row.width
@@ -888,6 +889,9 @@ impl Compositor {
                     row.flags & CONTROL_FLAG_FOCUSABLE != 0
                         && row.flags & CONTROL_FLAG_DISABLED == 0
                         && !row.action.is_empty()
+                        && self.windows.iter()
+                            .find(|window| &window.id == id)
+                            .is_some_and(|window| self.row_visible(window, *index, row))
                 })
         });
 
@@ -924,7 +928,8 @@ impl Compositor {
                 if row.width > 0 && row.height > 0
                     && row.flags & CONTROL_FLAG_FOCUSABLE != 0
                     && row.flags & CONTROL_FLAG_DISABLED == 0
-                    && !row.action.is_empty() {
+                    && !row.action.is_empty()
+                    && self.row_visible(window, index, row) {
                     controls.push((window.id.clone(), index));
                 }
             }
@@ -1047,10 +1052,15 @@ impl Compositor {
         let laid_out = window.rows.iter().any(|row| row.width > 0 && row.height > 0);
 
         let (row, in_rows) = if laid_out {
-            let row = window.rows.iter().position(|row| {
-                row.width > 0 && row.height > 0
+            let row = window.rows.iter().enumerate().find_map(|(index, row)| {
+                if row.width > 0 && row.height > 0
+                    && self.row_visible(&window, index, row)
                     && local_x >= row.x && local_x < row.x + row.width
-                    && local_y >= row.y && local_y < row.y + row.height
+                    && local_y >= row.y && local_y < row.y + row.height {
+                    Some(index)
+                } else {
+                    None
+                }
             }).unwrap_or(usize::MAX);
             (row, row != usize::MAX)
         } else if window.role == b'D' {
