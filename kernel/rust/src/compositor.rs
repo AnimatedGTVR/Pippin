@@ -331,6 +331,14 @@ impl Compositor {
         }
 
         if scan & 0x80 == 0 {
+            // Editable controls consume text/navigation before generic window
+            // scrolling. This makes Space text, Home/End caret movement, etc.
+            let (edited, action) = self.handle_edit_key(scan, text, extended);
+            if edited {
+                self.render();
+                return (action, Vec::new());
+            }
+
             // Extended navigation keys scroll only the active native window.
             if extended {
                 let handled = match scan {
@@ -365,7 +373,8 @@ impl Compositor {
                 return (None, Vec::new());
             }
 
-            // Enter or Space activates only a still-valid focused control.
+            // Enter or Space activates normal controls. Text fields consumed
+            // those keys above, so Space remains insertable while editing.
             if matches!(scan, 0x1c | 0x39) {
                 self.repair_focus_scope();
                 if let Some(action) = self.focused_action() {
@@ -431,6 +440,145 @@ impl Compositor {
         self.left_down = left;
         self.render();
         (action, events)
+    }
+
+    fn row_is_editable(row: &Row) -> bool {
+        matches!(row.kind, b's' | b'e')
+            && row.flags & CONTROL_FLAG_DISABLED == 0
+            && !row.action.is_empty()
+    }
+
+    fn editable_focus(&self) -> Option<(String, usize)> {
+        let (id, row_index) = self.focused_control.as_ref()?;
+        let window = self.windows.iter()
+            .find(|window| !window.minimized && &window.id == id)?;
+        let row = window.rows.get(*row_index)?;
+        if !Self::row_is_editable(row) { return None; }
+        Some((id.clone(), *row_index))
+    }
+
+    fn edit_index(&self, window_id: &str, row: usize) -> Option<usize> {
+        self.edits.iter().position(|edit| edit.window_id == window_id && edit.row == row)
+    }
+
+    fn ensure_edit_state(&mut self, window_id: &str, row: usize) -> usize {
+        if let Some(index) = self.edit_index(window_id, row) {
+            return index;
+        }
+
+        self.edits.push(EditState {
+            window_id: window_id.to_string(),
+            row,
+            value: String::new(),
+            cursor: 0,
+        });
+        self.edits.len() - 1
+    }
+
+    fn edit_snapshot(&self, window_id: &str, row: usize) -> (String, usize) {
+        self.edit_index(window_id, row)
+            .map(|index| {
+                let edit = &self.edits[index];
+                (edit.value.clone(), edit.cursor)
+            })
+            .unwrap_or_else(|| (String::new(), 0))
+    }
+
+    fn edit_visible_start(length: usize, cursor: usize, max_chars: usize) -> usize {
+        if length <= max_chars { return 0; }
+        cursor.saturating_sub(max_chars.saturating_sub(1))
+            .min(length.saturating_sub(max_chars))
+    }
+
+    fn place_edit_cursor(&mut self, window_id: &str, row: usize,
+                         local_x: i32, width: i32) {
+        let index = self.ensure_edit_state(window_id, row);
+        let max_chars = (((width - 28).max(12)) / 12) as usize;
+        let length = self.edits[index].value.len();
+        let start = Self::edit_visible_start(
+            length,
+            self.edits[index].cursor,
+            max_chars.max(1),
+        );
+        let column = ((local_x - 14).max(0) / 12) as usize;
+        self.edits[index].cursor = (start + column).min(length);
+    }
+
+    fn handle_edit_key(&mut self, scan: u8, text: Option<u8>, extended: bool)
+        -> (bool, Option<String>) {
+        let Some((window_id, row_index)) = self.editable_focus() else {
+            return (false, None);
+        };
+
+        let action = self.windows.iter()
+            .find(|window| window.id == window_id)
+            .and_then(|window| window.rows.get(row_index))
+            .map(|row| row.action.clone())
+            .unwrap_or_default();
+
+        let edit_index = self.ensure_edit_state(&window_id, row_index);
+        let edit = &mut self.edits[edit_index];
+
+        if extended {
+            match scan {
+                0x4b => { // Left
+                    edit.cursor = edit.cursor.saturating_sub(1);
+                    return (true, None);
+                }
+                0x4d => { // Right
+                    edit.cursor = (edit.cursor + 1).min(edit.value.len());
+                    return (true, None);
+                }
+                0x47 => { // Home
+                    edit.cursor = 0;
+                    return (true, None);
+                }
+                0x4f => { // End
+                    edit.cursor = edit.value.len();
+                    return (true, None);
+                }
+                0x53 => { // Delete
+                    if edit.cursor < edit.value.len() {
+                        edit.value.remove(edit.cursor);
+                    }
+                    return (true, None);
+                }
+                _ => {}
+            }
+        }
+
+        match scan {
+            0x0e => { // Backspace
+                if edit.cursor > 0 {
+                    edit.cursor -= 1;
+                    edit.value.remove(edit.cursor);
+                }
+                (true, None)
+            }
+            0x1c => { // Enter submits the field value.
+                let payload = if action.is_empty() {
+                    None
+                } else {
+                    Some(alloc::format!(
+                        "{}{}{}",
+                        action,
+                        ACTION_VALUE_SEPARATOR,
+                        edit.value
+                    ))
+                };
+                (true, payload)
+            }
+            _ => {
+                if let Some(byte) = text.filter(|byte| (0x20..=0x7e).contains(byte)) {
+                    if edit.value.len() < TEXT_INPUT_LIMIT {
+                        edit.value.insert(edit.cursor, byte as char);
+                        edit.cursor += 1;
+                    }
+                    return (true, None);
+                }
+                (false, None)
+            }
+        }
     }
 
     fn is_scrollable(window: &Window) -> bool {
