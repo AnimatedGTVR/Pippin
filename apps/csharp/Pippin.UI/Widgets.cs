@@ -197,3 +197,54 @@ public sealed class Switch(string text, bool isOn = false) : Widget
         return activate;
     }
 }
+
+
+public sealed class Heading(string text) : Widget
+{
+    public string Text { get; set; } = text;
+    public override int PreferredHeight => 32;
+    public override void Paint(Canvas canvas) =>
+        canvas.DrawText(Bounds.X, Bounds.Y + 6, Text, 0x001b2025, 2);
+}
+
+public sealed class TextField(string placeholder = "") : Widget
+{
+    private bool focused;
+    public string Text { get; set; } = "";
+    public string Placeholder { get; set; } = placeholder;
+    public override int PreferredHeight => 38;
+
+    public override void Paint(Canvas canvas)
+    {
+        canvas.FillRect(Bounds, 0x00ffffff);
+        canvas.StrokeRect(Bounds, focused ? 0x003d78a8u : 0x00b7bec3u, focused ? 2 : 1);
+        var shown = string.IsNullOrEmpty(Text) ? Placeholder : Text;
+        canvas.DrawText(Bounds.X + 11, Bounds.Y + 12, shown,
+            string.IsNullOrEmpty(Text) ? 0x00777f85u : 0x00252b31u);
+    }
+
+    public override bool MouseDown(int x, int y)
+    {
+        focused = Bounds.Contains(x, y);
+        return focused;
+    }
+}
+
+public sealed class ProgressBar : Widget
+{
+    private double value;
+    public double Value
+    {
+        get => value;
+        set => this.value = Math.Clamp(value, 0, 1);
+    }
+
+    public override int PreferredHeight => 18;
+
+    public override void Paint(Canvas canvas)
+    {
+        canvas.FillRect(new Rect(Bounds.X, Bounds.Y + 4, Bounds.Width, 10), 0x00d5d9dc);
+        canvas.FillRect(new Rect(Bounds.X, Bounds.Y + 4,
+            (int)(Bounds.Width * Value), 10), 0x003d78a8);
+    }
+}
