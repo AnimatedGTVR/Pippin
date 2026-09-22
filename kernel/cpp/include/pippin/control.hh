@@ -186,6 +186,10 @@ constexpr ControlSpec textField(const char* text, const char* action,
     return fixed(text, action, 'e', ControlStyle::SUBTLE, basis);
 }
 
+constexpr ControlSpec outputView(const char* text, int32_t basis = 120) {
+    return fixed(text, "", 'o', ControlStyle::PLAIN, basis);
+}
+
 constexpr ControlSpec toggle(const char* text, const char* action,
                              int32_t basis = 38) {
     return fixed(text, action, 't', ControlStyle::SUBTLE, basis);
