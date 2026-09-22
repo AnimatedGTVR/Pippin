@@ -76,11 +76,13 @@ impl Shell {
         };
         let _ = writeln!(shell.terminal, "Pippin command shell (native C++ desktop)");
         if desktop_ready {
-            let _ = writeln!(shell.terminal, "Native desktop shell active; press Esc for console.");
+            let _ = writeln!(shell.terminal, "Native desktop shell active; press Esc for VGA console.");
         } else {
-            let _ = writeln!(shell.terminal, "Desktop unavailable. Type 'help' for commands.\n");
-            shell.prompt();
+            let _ = writeln!(shell.terminal, "Desktop unavailable. Type 'help' for commands.");
         }
+        // COM1 remains an interactive diagnostics/command console even while
+        // the graphical desktop is active.
+        shell.prompt();
         shell
     }
 
@@ -244,7 +246,7 @@ impl Shell {
                 let command = core::str::from_utf8(&line[..self.len]).unwrap_or("").trim();
                 self.execute(command);
                 self.len = 0;
-                if self.desktop.is_none() { self.prompt(); }
+                self.prompt();
             }
             8 | 127 if self.len > 0 => {
                 self.len -= 1;
