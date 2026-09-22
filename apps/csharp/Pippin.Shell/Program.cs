@@ -13,7 +13,7 @@ public sealed class Wallpaper : Application
     public override string Id => "org.pippin.wallpaper";
     public override IEnumerable<Surface> CreateSurfaces() =>
         [new("wallpaper", SurfaceRole.Wallpaper, "Wallpaper", 0, 0, 800, 600,
-            Background: "#263746")];
+            Background: "#2f80ed")];
 }
 
 public sealed class Panel : Application
@@ -112,7 +112,6 @@ internal sealed class HostBridge(string socketPath, Application[] clients)
 {
     private readonly Channel<string> incoming = Channel.CreateUnbounded<string>();
     private StreamWriter? writer;
-    private bool alternateWallpaper;
     private bool dockVisible = true;
     private bool notificationsEnabled = true;
     private bool animationsEnabled = true;
@@ -189,9 +188,8 @@ internal sealed class HostBridge(string socketPath, Application[] clients)
             case "launcher.search": await ShowStatusAsync("App search ready"); break;
             case "files.search": await ShowStatusAsync("File search ready"); break;
             case "wallpaper.select.gradient":
-                alternateWallpaper = !alternateWallpaper;
-                await SendAsync("S|wallpaper|B|0|0|800|600|" +
-                    (alternateWallpaper ? "#4b4f63" : "#263746") + "|");
+                await SendAsync("S|wallpaper|B|0|0|800|600|#2f80ed|");
+                await ShowStatusAsync("Blue wallpaper applied");
                 break;
         }
     }
