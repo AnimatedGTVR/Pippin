@@ -25,6 +25,9 @@ const SHELL_SURFACE: u32 = 0x00222931;
 const SHELL_SURFACE_HOVER: u32 = 0x002d3540;
 const SHELL_SURFACE_PRESSED: u32 = 0x00384452;
 const SHELL_DISABLED: u32 = 0x0020272e;
+const CONTROL_LIGHT_HOVER: u32 = 0x00eef4f8;
+const CONTROL_LIGHT_PRESSED: u32 = 0x00dce8f2;
+const CONTROL_LIGHT_DISABLED: u32 = 0x00eef0f1;
 const SHELL_BORDER: u32 = 0x00414b57;
 const SHELL_TEXT: u32 = 0x00f3f5f7;
 const SHELL_MUTED: u32 = 0x00aeb8c2;
@@ -445,47 +448,33 @@ impl Compositor {
                 return None;
             }
         }
-        let (row, in_rows) = if window.role == b'D' {
-            let local_x = self.cursor_x - window.x;
-            let local_y = self.cursor_y - window.y;
+        let local_x = self.cursor_x - window.x;
+        let local_y = self.cursor_y - window.y;
+        let laid_out = window.rows.iter().any(|row| row.width > 0 && row.height > 0);
 
-            // Control Manager supplies real local bounds. Hit testing no
-            // longer knows how many dock items exist or where they are placed.
-            let laid_out = window.rows.iter().any(|row| row.width > 0 && row.height > 0);
-            if laid_out {
-                let row = window.rows.iter().position(|row| {
-                    row.width > 0 && row.height > 0
-                        && local_x >= row.x && local_x < row.x + row.width
-                        && local_y >= row.y && local_y < row.y + row.height
-                }).unwrap_or(usize::MAX);
-                (row, row != usize::MAX)
-            } else {
-                // Compatibility path for old bridge-created dock rows.
-                let row = if (12..=116).contains(&local_x) { 0 }
-                    else if (132..=236).contains(&local_x) { 1 }
-                    else if (252..=356).contains(&local_x) { 2 }
-                    else { usize::MAX };
-                (row, (8..60).contains(&local_y))
-            }
+        let (row, in_rows) = if laid_out {
+            // Every migrated surface uses Control Manager rectangles. The
+            // compositor no longer needs to know whether this is a Dock,
+            // Panel, Launcher, Files, Settings, or Terminal layout.
+            let row = window.rows.iter().position(|row| {
+                row.width > 0 && row.height > 0
+                    && local_x >= row.x && local_x < row.x + row.width
+                    && local_y >= row.y && local_y < row.y + row.height
+            }).unwrap_or(usize::MAX);
+            (row, row != usize::MAX)
+        } else if window.role == b'D' {
+            // Legacy bridge compatibility.
+            let row = if (12..=116).contains(&local_x) { 0 }
+                else if (132..=236).contains(&local_x) { 1 }
+                else if (252..=356).contains(&local_x) { 2 }
+                else { usize::MAX };
+            (row, (8..60).contains(&local_y))
         } else if window.role == b'P' {
-            let local_x = self.cursor_x - window.x;
-            let local_y = self.cursor_y - window.y;
-            let laid_out = window.rows.iter().any(|row| row.width > 0 && row.height > 0);
-
-            if laid_out {
-                let row = window.rows.iter().position(|row| {
-                    row.width > 0 && row.height > 0
-                        && local_x >= row.x && local_x < row.x + row.width
-                        && local_y >= row.y && local_y < row.y + row.height
-                }).unwrap_or(usize::MAX);
-                (row, row != usize::MAX)
-            } else {
-                let row = if (12..=210).contains(&local_x) { 0 }
-                    else if (420..=604).contains(&local_x) { 1 }
-                    else if (774..=1012).contains(&local_x) { 2 }
-                    else { usize::MAX };
-                (row, (6..42).contains(&local_y))
-            }
+            let row = if (12..=210).contains(&local_x) { 0 }
+                else if (420..=604).contains(&local_x) { 1 }
+                else if (774..=1012).contains(&local_x) { 2 }
+                else { usize::MAX };
+            (row, (6..42).contains(&local_y))
         } else {
             let row_top = 62;
             (((self.cursor_y - window.y - row_top) / 42) as usize,
@@ -714,32 +703,67 @@ impl Compositor {
                   if focused { CHROME_INK } else { 0x006f777d });
 
         for (index, row) in window.rows.iter().enumerate() {
-            let y = window.y + 68 + index as i32 * 42;
-            if y + 22 > window.y + window.height { break; }
+            let managed = row.width > 0 && row.height > 0;
+            let x = window.x + if managed { row.x } else { 24 };
+            let y = window.y + if managed { row.y } else { 60 + index as i32 * 42 };
+            let width = if managed { row.width } else { window.width - 48 };
+            let height = if managed { row.height } else { 34 };
+
+            if y >= window.y + window.height { break; }
+
+            let (hovered, pressed, control_focused) = self.control_state(&window.id, index);
+            let disabled = row.flags & CONTROL_FLAG_DISABLED != 0;
+            let surface = if disabled {
+                CONTROL_LIGHT_DISABLED
+            } else if pressed {
+                CONTROL_LIGHT_PRESSED
+            } else if hovered {
+                CONTROL_LIGHT_HOVER
+            } else {
+                0x00ffffff
+            };
+            let border = if control_focused {
+                CHROME_ACCENT
+            } else if focused {
+                0x00b7bec3
+            } else {
+                0x00c2c8cc
+            };
+            let ink = if disabled { 0x00828a90 } else { CHROME_INK };
+
             match row.kind {
                 b'h' => {
-                    self.text(window.x + 28, y, &row.text, 2, CHROME_INK);
-                    self.fill_rect(window.x + 28, y + 20, window.width - 56, 1, 0x00d5d9dc);
+                    self.text(x + 4, y + ((height - 14) / 2).max(0),
+                              &row.text, 2, ink);
+                    self.fill_rect(x, y + height - 2, width, 1, 0x00d5d9dc);
                 }
                 b's' => {
-                    self.fill_rect(window.x + 24, y - 8, window.width - 48, 34, 0x00ffffff);
-                    self.border(window.x + 24, y - 8, window.width - 48, 34,
-                                if focused { CHROME_ACCENT } else { 0x00b7bec3 });
-                    self.text(window.x + 38, y, &row.text, 2, 0x00777f85);
+                    self.rounded_rect(x, y, width, height, surface, border);
+                    self.text(x + 14, y + ((height - 14) / 2).max(0),
+                              &row.text, 2, if disabled { 0x0090999f } else { 0x00777f85 });
                 }
                 b't' => {
-                    self.text(window.x + 38, y, &row.text, 2, CHROME_INK);
-                    let tx = window.x + window.width - 78;
-                    self.fill_rect(tx, y - 5, 38, 20, 0x00c8cdd1);
-                    self.fill_rect(tx + 3, y - 2, 14, 14, 0x00ffffff);
+                    if !row.action.is_empty() {
+                        self.rounded_rect(x, y, width, height, surface, border);
+                    }
+                    self.text(x + 14, y + ((height - 14) / 2).max(0),
+                              &row.text, 2, ink);
+                    let track_w = 38;
+                    let track_h = 20;
+                    let tx = x + width - track_w - 14;
+                    let ty = y + (height - track_h) / 2;
+                    self.rounded_rect(tx, ty, track_w, track_h,
+                                      if disabled { 0x00cfd4d7 } else { 0x00c8cdd1 },
+                                      0x00adb5ba);
+                    self.rounded_rect(tx + 3, ty + 3, 14, 14,
+                                      0x00ffffff, 0x00ffffff);
                 }
                 _ => {
                     if !row.action.is_empty() {
-                        self.fill_rect(window.x + 24, y - 8, window.width - 48, 34, 0x00ffffff);
-                        self.border(window.x + 24, y - 8, window.width - 48, 34,
-                                    if focused { CHROME_ACCENT } else { 0x00c2c8cc });
+                        self.rounded_rect(x, y, width, height, surface, border);
                     }
-                    self.text(window.x + 38, y, &row.text, 2, CHROME_INK);
+                    self.text(x + 14, y + ((height - 14) / 2).max(0),
+                              &row.text, 2, ink);
                 }
             }
         }
