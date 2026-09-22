@@ -22,7 +22,7 @@ const CHROME_SHADOW: u32 = 0x00151b22;
 const HEADER_HEIGHT: i32 = 44;
 
 #[derive(Clone)]
-struct Row { text: String, action: String }
+struct Row { text: String, action: String, kind: u8 }
 
 #[derive(Clone)]
 struct Window {
@@ -70,8 +70,8 @@ impl Compositor {
             id: alloc::format!("native{}", self.next_id), role: b'W',
             x: 104 + offset, y: 88 + offset,
             width: 440, height: 300, title: "WINDOW TEST".to_string(),
-            rows: vec![Row { text: "RUST COMPOSITOR".to_string(), action: String::new() },
-                       Row { text: "DRAG TITLE BAR".to_string(), action: String::new() }],
+            rows: vec![Row { text: "RUST COMPOSITOR".to_string(), action: String::new(), kind: b'l' },
+                       Row { text: "DRAG TITLE BAR".to_string(), action: String::new(), kind: b'l' }],
             native: true,
         });
         self.next_id = self.next_id.wrapping_add(1).max(1);
@@ -111,7 +111,9 @@ impl Compositor {
             if part.is_empty() { continue; }
             let (text, action) = part.split_once('@').unwrap_or((part, ""));
             if text.len() > 32 || action.len() > 64 { return; }
-            parsed_rows.push(Row { text: text.to_string(), action: action.to_string() });
+            let (kind, text) = text.split_once(':').map(|(kind, value)|
+                (kind.as_bytes().first().copied().unwrap_or(b'l'), value)).unwrap_or((b'l', text));
+            parsed_rows.push(Row { text: text.to_string(), action: action.to_string(), kind });
         }
         self.windows.retain(|window| window.id != id);
         if self.windows.len() >= MAX_WINDOWS { return; }
@@ -279,12 +281,32 @@ impl Compositor {
         for (index, row) in window.rows.iter().enumerate() {
             let y = window.y + 68 + index as i32 * 42;
             if y + 22 > window.y + window.height { break; }
-            if !row.action.is_empty() {
-                self.fill_rect(window.x + 24, y - 8, window.width - 48, 34, 0x00ffffff);
-                self.border(window.x + 24, y - 8, window.width - 48, 34,
-                            if focused { CHROME_ACCENT } else { 0x00c2c8cc });
+            match row.kind {
+                b'h' => {
+                    self.text(window.x + 28, y, &row.text, 2, CHROME_INK);
+                    self.fill_rect(window.x + 28, y + 20, window.width - 56, 1, 0x00d5d9dc);
+                }
+                b's' => {
+                    self.fill_rect(window.x + 24, y - 8, window.width - 48, 34, 0x00ffffff);
+                    self.border(window.x + 24, y - 8, window.width - 48, 34,
+                                if focused { CHROME_ACCENT } else { 0x00b7bec3 });
+                    self.text(window.x + 38, y, &row.text, 2, 0x00777f85);
+                }
+                b't' => {
+                    self.text(window.x + 38, y, &row.text, 2, CHROME_INK);
+                    let tx = window.x + window.width - 78;
+                    self.fill_rect(tx, y - 5, 38, 20, 0x00c8cdd1);
+                    self.fill_rect(tx + 3, y - 2, 14, 14, 0x00ffffff);
+                }
+                _ => {
+                    if !row.action.is_empty() {
+                        self.fill_rect(window.x + 24, y - 8, window.width - 48, 34, 0x00ffffff);
+                        self.border(window.x + 24, y - 8, window.width - 48, 34,
+                                    if focused { CHROME_ACCENT } else { 0x00c2c8cc });
+                    }
+                    self.text(window.x + 38, y, &row.text, 2, CHROME_INK);
+                }
             }
-            self.text(window.x + 38, y, &row.text, 2, CHROME_INK);
         }
     }
 
