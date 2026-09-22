@@ -9,6 +9,18 @@ pub const WIDTH: usize = 800;
 pub const HEIGHT: usize = 600;
 const MAX_WINDOWS: usize = 16;
 
+// Pippin chrome: compact GNOME-like header bars, Skift-inspired soft surfaces,
+// and the deliberately simple geometry of Redox/Orbital.
+const CHROME_INK: u32 = 0x00252b31;
+const CHROME_SURFACE: u32 = 0x00f7f7f5;
+const CHROME_HEADER: u32 = 0x00e9ecef;
+const CHROME_HEADER_INACTIVE: u32 = 0x00dfe3e6;
+const CHROME_BORDER: u32 = 0x009aa2a8;
+const CHROME_ACCENT: u32 = 0x003d78a8;
+const CHROME_CLOSE: u32 = 0x00d95d55;
+const CHROME_SHADOW: u32 = 0x00151b22;
+const HEADER_HEIGHT: i32 = 44;
+
 #[derive(Clone)]
 struct Row { text: String, action: String }
 
@@ -153,8 +165,8 @@ impl Compositor {
         }) else { return None; };
         let window = self.windows.remove(index);
         if matches!(window.role, b'W' | b'L')
-            && self.cursor_x >= window.x + 14 && self.cursor_x < window.x + 35
-            && self.cursor_y >= window.y + 10 && self.cursor_y < window.y + 31 {
+            && self.cursor_x >= window.x + 15 && self.cursor_x < window.x + 33
+            && self.cursor_y >= window.y + 14 && self.cursor_y < window.y + 32 {
             return if window.native { None } else { Some(alloc::format!("{}.close", window.id)) };
         }
         let row_top = if matches!(window.role, b'P' | b'D') { 7 } else { 62 };
@@ -166,7 +178,7 @@ impl Compositor {
             self.cursor_y >= window.y + row_top && self.cursor_y < window.y + window.height - 4
         } else { self.cursor_y >= window.y + row_top };
         let action = if in_rows { window.rows.get(row).map(|row| row.action.clone()) } else { None };
-        if matches!(window.role, b'W' | b'L') && self.cursor_y < window.y + 42 {
+        if matches!(window.role, b'W' | b'L') && self.cursor_y < window.y + HEADER_HEIGHT {
             self.drag = Some((window.id.clone(), self.cursor_x - window.x, self.cursor_y - window.y));
         }
         self.windows.push(window); // focused window becomes frontmost
@@ -181,8 +193,9 @@ impl Compositor {
 
     fn render(&mut self) {
         self.wallpaper();
+        let focused = self.windows.len().checked_sub(1);
         for index in 0..self.windows.len() {
-            self.window(self.windows[index].clone());
+            self.window(self.windows[index].clone(), focused == Some(index));
         }
         self.clients.paint(&mut self.pixels);
         self.cursor();
@@ -211,36 +224,67 @@ impl Compositor {
         self.fill_rect(0, HEIGHT as i32 - 12, WIDTH as i32, 12, 0x00224252);
     }
 
-    fn window(&mut self, window: Window) {
-        const INK: u32 = 0x00263743;
-        const PAPER: u32 = 0x00f5f3ec;
+    fn window(&mut self, window: Window, focused: bool) {
         if matches!(window.role, b'P' | b'D' | b'N') {
-            self.fill_rect(window.x + 3, window.y + 4, window.width, window.height, 0x001b3545);
-            self.fill_rect(window.x, window.y, window.width, window.height, 0x00e3e9e6);
-            self.border(window.x, window.y, window.width, window.height, INK);
+            // Shell surfaces stay visually light and quiet so applications remain dominant.
+            self.fill_rect(window.x + 2, window.y + 3, window.width, window.height, CHROME_SHADOW);
+            self.fill_rect(window.x, window.y, window.width, window.height, 0x00eef1f2);
+            self.border(window.x, window.y, window.width, window.height, 0x00b7bec3);
             for (index, row) in window.rows.iter().enumerate() {
                 let x = window.x + 16 + index as i32 * 118;
                 if x + 90 > window.x + window.width { break; }
-                if !row.action.is_empty() { self.fill_rect(x - 5, window.y + 6, 105, window.height - 12, 0x00f8f8f0); }
-                self.text(x, window.y + 12, &row.text, 2, INK);
+                if !row.action.is_empty() {
+                    self.fill_rect(x - 5, window.y + 6, 105, window.height - 12, 0x00ffffff);
+                    self.border(x - 5, window.y + 6, 105, window.height - 12, 0x00cbd1d5);
+                }
+                self.text(x, window.y + 12, &row.text, 2, CHROME_INK);
             }
             return;
         }
-        self.fill_rect(window.x + 9, window.y + 11, window.width, window.height, 0x001b3545);
-        self.fill_rect(window.x, window.y, window.width, window.height, PAPER);
-        self.border(window.x, window.y, window.width, window.height, INK);
-        self.fill_rect(window.x + 2, window.y + 2, window.width - 4, 40, 0x00dce7e8);
-        self.fill_rect(window.x + 2, window.y + 41, window.width - 4, 2, INK);
-        self.border(window.x + 14, window.y + 10, 21, 21, INK);
-        self.text(window.x + 52, window.y + 13, &window.title, 2, INK);
+
+        // Layered shadow gives depth without the old heavy black frame.
+        self.fill_rect(window.x + 8, window.y + 10, window.width, window.height, CHROME_SHADOW);
+        self.fill_rect(window.x + 4, window.y + 5, window.width, window.height, 0x00323a42);
+        self.fill_rect(window.x, window.y, window.width, window.height, CHROME_SURFACE);
+        self.border(window.x, window.y, window.width, window.height, CHROME_BORDER);
+
+        let header = if focused { CHROME_HEADER } else { CHROME_HEADER_INACTIVE };
+        self.fill_rect(window.x + 1, window.y + 1, window.width - 2, HEADER_HEIGHT, header);
+        self.fill_rect(window.x + 1, window.y + HEADER_HEIGHT, window.width - 2, 1, 0x00c7cdd1);
+
+        // Compact circular-ish controls. With the bootstrap rasterizer these are stepped,
+        // which gives Pippin its own identity instead of cloning any source desktop.
+        let close_x = window.x + 15;
+        let control_y = window.y + 14;
+        self.fill_rect(close_x + 3, control_y, 12, 18, CHROME_CLOSE);
+        self.fill_rect(close_x, control_y + 3, 18, 12, CHROME_CLOSE);
+        self.fill_rect(close_x + 5, control_y + 5, 8, 8, 0x00f7d8d5);
+
+        let min_x = close_x + 29;
+        self.fill_rect(min_x + 3, control_y, 12, 18, 0x00c6ccd0);
+        self.fill_rect(min_x, control_y + 3, 18, 12, 0x00c6ccd0);
+        self.fill_rect(min_x + 5, control_y + 8, 8, 2, 0x00656d73);
+
+        let max_x = min_x + 29;
+        self.fill_rect(max_x + 3, control_y, 12, 18, 0x00c6ccd0);
+        self.fill_rect(max_x, control_y + 3, 18, 12, 0x00c6ccd0);
+        self.border(max_x + 5, control_y + 5, 8, 8, 0x00656d73);
+
+        // GNOME-like centered title treatment while retaining Pippin's tiny built-in font.
+        let title_width = window.title.len() as i32 * 12;
+        let title_x = window.x + ((window.width - title_width) / 2).max(92);
+        self.text(title_x, window.y + 15, &window.title, 2,
+                  if focused { CHROME_INK } else { 0x006f777d });
+
         for (index, row) in window.rows.iter().enumerate() {
-            let y = window.y + 64 + index as i32 * 42;
+            let y = window.y + 68 + index as i32 * 42;
             if y + 22 > window.y + window.height { break; }
             if !row.action.is_empty() {
-                self.fill_rect(window.x + 28, y - 7, window.width - 56, 32, 0x00dae8e6);
-                self.border(window.x + 28, y - 7, window.width - 56, 32, 0x0084999d);
+                self.fill_rect(window.x + 24, y - 8, window.width - 48, 34, 0x00ffffff);
+                self.border(window.x + 24, y - 8, window.width - 48, 34,
+                            if focused { CHROME_ACCENT } else { 0x00c2c8cc });
             }
-            self.text(window.x + 40, y, &row.text, 2, INK);
+            self.text(window.x + 38, y, &row.text, 2, CHROME_INK);
         }
     }
 
