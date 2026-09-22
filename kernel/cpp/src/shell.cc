@@ -266,7 +266,7 @@ constexpr pippin_shell_item kSettingsItems[] = {
 
 constexpr ui::Node kTerminalNodes[] = {
     ui::leaf(ui::heading("Pippin Terminal")),
-    ui::leaf(ui::label("Native C++ shell online.")),
+    ui::leaf(ui::outputView("Terminal output", 248)),
     ui::leaf(ui::textField("pippin> ", "terminal.input")),
 };
 
