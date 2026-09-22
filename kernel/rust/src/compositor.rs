@@ -68,6 +68,12 @@ struct Window {
     restore: Option<(i32, i32, i32, i32)>,
 }
 
+#[derive(Clone, PartialEq, Eq)]
+enum FocusScope {
+    Desktop,
+    Window(String),
+}
+
 pub struct Compositor {
     pixels: Vec<u32>,
     clients: WindowServer,
@@ -80,6 +86,7 @@ pub struct Compositor {
     hovered_control: Option<(String, usize)>,
     pressed_control: Option<(String, usize)>,
     focused_control: Option<(String, usize)>,
+    focus_scope: FocusScope,
     drag: Option<(String, i32, i32)>, // window ID and pointer offset
 }
 
@@ -94,6 +101,7 @@ impl Compositor {
             hovered_control: None,
             pressed_control: None,
             focused_control: None,
+            focus_scope: FocusScope::Desktop,
             drag: None,
         };
 
@@ -178,7 +186,13 @@ impl Compositor {
             if let Some(index) = self.windows.iter().position(|window| window.id == id) {
                 let mut window = self.windows.remove(index);
                 window.minimized = false;
+                let scope = if matches!(window.role, b'W' | b'L') {
+                    FocusScope::Window(window.id.clone())
+                } else {
+                    FocusScope::Desktop
+                };
                 self.windows.push(window);
+                self.set_focus_scope(scope);
                 self.render();
             }
             return true;
@@ -186,6 +200,7 @@ impl Compositor {
         if let Some(id) = line.strip_prefix("M|") {
             if let Some(index) = self.windows.iter().position(|window| window.id == id) {
                 self.windows[index].minimized = true;
+                self.repair_focus_scope();
                 self.render();
             }
             return true;
@@ -193,6 +208,7 @@ impl Compositor {
         if let Some(id) = line.strip_prefix("X|") {
             self.windows.retain(|window| window.id != id);
             if id == "wallpaper" { self.wallpaper_base = 0x002f80ed; }
+            self.repair_focus_scope();
             self.render();
             return true;
         }
@@ -253,6 +269,7 @@ impl Compositor {
                                        title: title.to_string(), rows: parsed_rows, native: false,
                                        maximized: false, minimized: false, restore: None });
         }
+        self.repair_focus_scope();
         self.render();
         true
     }
@@ -272,15 +289,16 @@ impl Compositor {
         }
 
         if scan & 0x80 == 0 {
-            // Tab / Shift+Tab moves focus across native managed controls.
+            // Tab / Shift+Tab stays inside the active native focus scope.
             if scan == 0x0f {
                 self.focus_next(reverse_focus);
                 self.render();
                 return (None, Vec::new());
             }
 
-            // Enter or Space activates the focused control.
+            // Enter or Space activates only a still-valid focused control.
             if matches!(scan, 0x1c | 0x39) {
+                self.repair_focus_scope();
                 if let Some(action) = self.focused_action() {
                     self.render();
                     return (Some(action), Vec::new());
@@ -309,13 +327,20 @@ impl Compositor {
             self.control_at(self.cursor_x, self.cursor_y)
         };
 
+        let mut action = None;
         if !handled && left && !self.left_down {
             self.pressed_control = self.hovered_control.clone();
+            // Window chrome reacts on press; managed controls only focus here.
+            // Their action fires on release if the pointer is still over the
+            // same control.
+            action = self.pointer_down();
         } else if !left && self.left_down {
+            if !handled {
+                action = self.release_control();
+            }
             self.pressed_control = None;
         }
 
-        let action = if !handled && left && !self.left_down { self.press() } else { None };
         if left && !handled {
             if let Some((ref id, offset_x, offset_y)) = self.drag {
                 if let Some(window) = self.windows.iter_mut().find(|window| window.id == *id) {
@@ -351,11 +376,73 @@ impl Compositor {
         None
     }
 
+    fn scope_for_window(window: &Window) -> FocusScope {
+        if matches!(window.role, b'W' | b'L') {
+            FocusScope::Window(window.id.clone())
+        } else {
+            FocusScope::Desktop
+        }
+    }
+
+    fn focus_scope_accepts(&self, window: &Window) -> bool {
+        match &self.focus_scope {
+            FocusScope::Desktop => matches!(window.role, b'P' | b'D'),
+            FocusScope::Window(id) => &window.id == id,
+        }
+    }
+
+    fn set_focus_scope(&mut self, scope: FocusScope) {
+        if self.focus_scope != scope {
+            self.focus_scope = scope;
+            self.focused_control = None;
+        }
+    }
+
+    fn repair_focus_scope(&mut self) {
+        let valid = match &self.focus_scope {
+            FocusScope::Desktop => true,
+            FocusScope::Window(id) => self.windows.iter()
+                .any(|window| !window.minimized && &window.id == id),
+        };
+
+        if !valid {
+            let scope = self.windows.iter().rev()
+                .find(|window| !window.minimized && matches!(window.role, b'W' | b'L'))
+                .map(Self::scope_for_window)
+                .unwrap_or(FocusScope::Desktop);
+            self.set_focus_scope(scope);
+        }
+
+        let keep_focus = self.focused_control.as_ref().is_some_and(|(id, index)| {
+            self.windows.iter().find(|window| !window.minimized && &window.id == id)
+                .and_then(|window| {
+                    if !self.focus_scope_accepts(window) {
+                        return None;
+                    }
+                    window.rows.get(*index)
+                })
+                .is_some_and(|row| {
+                    row.flags & CONTROL_FLAG_FOCUSABLE != 0
+                        && row.flags & CONTROL_FLAG_DISABLED == 0
+                        && !row.action.is_empty()
+                })
+        });
+
+        if !keep_focus {
+            self.focused_control = None;
+        }
+    }
+
     fn focused_action(&self) -> Option<String> {
         let (id, index) = self.focused_control.as_ref()?;
-        let window = self.windows.iter().find(|window| !window.minimized && &window.id == id)?;
+        let window = self.windows.iter()
+            .find(|window| !window.minimized && &window.id == id)?;
+        if !self.focus_scope_accepts(window) {
+            return None;
+        }
         let row = window.rows.get(*index)?;
-        if row.flags & CONTROL_FLAG_DISABLED != 0 || row.flags & CONTROL_FLAG_FOCUSABLE == 0
+        if row.flags & CONTROL_FLAG_DISABLED != 0
+            || row.flags & CONTROL_FLAG_FOCUSABLE == 0
             || row.action.is_empty() {
             return None;
         }
@@ -363,9 +450,13 @@ impl Compositor {
     }
 
     fn focus_next(&mut self, reverse: bool) {
+        self.repair_focus_scope();
+
         let mut controls: Vec<(String, usize)> = Vec::new();
         for window in &self.windows {
-            if window.minimized { continue; }
+            if window.minimized || !self.focus_scope_accepts(window) {
+                continue;
+            }
             for (index, row) in window.rows.iter().enumerate() {
                 if row.width > 0 && row.height > 0
                     && row.flags & CONTROL_FLAG_FOCUSABLE != 0
@@ -406,56 +497,91 @@ impl Compositor {
         )
     }
 
-    fn press(&mut self) -> Option<String> {
+    fn release_control(&self) -> Option<String> {
+        let pressed = self.pressed_control.as_ref()?;
+        let hovered = self.control_at(self.cursor_x, self.cursor_y)?;
+        if &hovered != pressed {
+            return None;
+        }
+
+        let (id, index) = pressed;
+        let window = self.windows.iter()
+            .find(|window| !window.minimized && &window.id == id)?;
+        let row = window.rows.get(*index)?;
+        if row.flags & CONTROL_FLAG_DISABLED != 0 || row.action.is_empty() {
+            return None;
+        }
+        Some(row.action.clone())
+    }
+
+    fn pointer_down(&mut self) -> Option<String> {
         let Some(index) = self.windows.iter().rposition(|window| {
-            !window.minimized && self.cursor_x >= window.x && self.cursor_x < window.x + window.width
-                && self.cursor_y >= window.y && self.cursor_y < window.y + window.height
-        }) else { return None; };
+            !window.minimized
+                && self.cursor_x >= window.x
+                && self.cursor_x < window.x + window.width
+                && self.cursor_y >= window.y
+                && self.cursor_y < window.y + window.height
+        }) else {
+            self.set_focus_scope(FocusScope::Desktop);
+            return None;
+        };
+
         let mut window = self.windows.remove(index);
-        if matches!(window.role, b'W' | b'L') && self.cursor_y >= window.y + 14 && self.cursor_y < window.y + 32 {
+        self.set_focus_scope(Self::scope_for_window(&window));
+
+        if matches!(window.role, b'W' | b'L')
+            && self.cursor_y >= window.y + 14
+            && self.cursor_y < window.y + 32 {
             let control = self.cursor_x - (window.x + 15);
+
             if (0..18).contains(&control) {
                 if window.native {
                     // Native compositor test windows really close.
+                    self.repair_focus_scope();
                     return None;
                 }
+
                 let action = alloc::format!("{}.close", window.id);
-                // Built-in C++ shell surfaces stay resident so they can be
-                // restored later without a host process recreating them.
                 window.minimized = true;
                 self.windows.push(window);
-                self.render();
+                self.repair_focus_scope();
                 return Some(action);
             }
+
             if (29..47).contains(&control) {
                 window.minimized = true;
                 self.windows.push(window);
+                self.repair_focus_scope();
                 return None;
             }
+
             if (58..76).contains(&control) {
                 if window.maximized {
                     if let Some((x, y, width, height)) = window.restore.take() {
-                        window.x = x; window.y = y; window.width = width; window.height = height;
+                        window.x = x;
+                        window.y = y;
+                        window.width = width;
+                        window.height = height;
                     }
                     window.maximized = false;
                 } else {
                     window.restore = Some((window.x, window.y, window.width, window.height));
-                    window.x = 8; window.y = 58;
-                    window.width = WIDTH as i32 - 16; window.height = HEIGHT as i32 - 116;
+                    window.x = 8;
+                    window.y = 58;
+                    window.width = WIDTH as i32 - 16;
+                    window.height = HEIGHT as i32 - 116;
                     window.maximized = true;
                 }
                 self.windows.push(window);
                 return None;
             }
         }
+
         let local_x = self.cursor_x - window.x;
         let local_y = self.cursor_y - window.y;
         let laid_out = window.rows.iter().any(|row| row.width > 0 && row.height > 0);
 
         let (row, in_rows) = if laid_out {
-            // Every migrated surface uses Control Manager rectangles. The
-            // compositor no longer needs to know whether this is a Dock,
-            // Panel, Launcher, Files, Settings, or Terminal layout.
             let row = window.rows.iter().position(|row| {
                 row.width > 0 && row.height > 0
                     && local_x >= row.x && local_x < row.x + row.width
@@ -463,7 +589,6 @@ impl Compositor {
             }).unwrap_or(usize::MAX);
             (row, row != usize::MAX)
         } else if window.role == b'D' {
-            // Legacy bridge compatibility.
             let row = if (12..=116).contains(&local_x) { 0 }
                 else if (132..=236).contains(&local_x) { 1 }
                 else if (252..=356).contains(&local_x) { 2 }
@@ -480,24 +605,28 @@ impl Compositor {
             (((self.cursor_y - window.y - row_top) / 42) as usize,
              self.cursor_y >= window.y + row_top)
         };
-        let action = if in_rows {
-            window.rows.get(row).and_then(|control| {
-                if control.flags & CONTROL_FLAG_DISABLED != 0 {
-                    None
-                } else {
-                    if control.flags & CONTROL_FLAG_FOCUSABLE != 0 {
-                        self.focused_control = Some((window.id.clone(), row));
-                    }
-                    Some(control.action.clone())
+
+        if in_rows {
+            if let Some(control) = window.rows.get(row) {
+                if control.flags & CONTROL_FLAG_DISABLED == 0
+                    && control.flags & CONTROL_FLAG_FOCUSABLE != 0 {
+                    self.focused_control = Some((window.id.clone(), row));
                 }
-            })
-        } else { None };
-        if matches!(window.role, b'W' | b'L') && !window.maximized
-            && self.cursor_y < window.y + HEADER_HEIGHT {
-            self.drag = Some((window.id.clone(), self.cursor_x - window.x, self.cursor_y - window.y));
+            }
         }
-        self.windows.push(window); // focused window becomes frontmost
-        action.filter(|action| !action.is_empty())
+
+        if matches!(window.role, b'W' | b'L')
+            && !window.maximized
+            && self.cursor_y < window.y + HEADER_HEIGHT {
+            self.drag = Some((
+                window.id.clone(),
+                self.cursor_x - window.x,
+                self.cursor_y - window.y,
+            ));
+        }
+
+        self.windows.push(window); // active surface becomes frontmost
+        None
     }
 
     pub fn present(&self, framebuffer: *mut u32) {
