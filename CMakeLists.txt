@@ -95,5 +95,6 @@ add_custom_command(
 
 add_custom_target(rust-kernel DEPENDS "${PIPPIN_RUST_LIB}")
 
+add_subdirectory(apps/native)
 add_subdirectory(kernel)
 add_subdirectory(drivers/cpp)
