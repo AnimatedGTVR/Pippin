@@ -107,12 +107,18 @@ impl Shell {
         if self.desktop.is_some() {
             // Global desktop shortcut: Alt+T asks the shell client to open its terminal.
             // Track both Alt keys' set-1 make/break codes before forwarding normal input.
-            if scan == 0x38 { self.alt = true; return; }
-            if scan == 0xb8 { self.alt = false; return; }
+            // Set-1 Alt is 0x38/0xb8. An E0 prefix may precede right Alt, so do not
+            // discard the following byte while the graphical desktop is active.
+            if scan == 0xe0 { self.extended = true; return; }
+            if scan == 0x38 { self.alt = true; self.extended = false; return; }
+            if scan == 0xb8 { self.alt = false; self.extended = false; return; }
             if self.alt && scan == 0x14 {
                 self.bridge.action("terminal.open");
+                self.extended = false;
                 return;
             }
+            if scan & 0x80 != 0 && (scan & 0x7f) == 0x14 { return; }
+            self.extended = false;
             let client_active = self.desktop.as_ref().is_some_and(|desktop| desktop.has_client_windows());
             if scan == 0x01 && !client_active {
                 self.desktop.take();
