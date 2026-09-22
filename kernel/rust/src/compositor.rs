@@ -127,11 +127,19 @@ impl Compositor {
                 (kind.as_bytes().first().copied().unwrap_or(b'l'), value)).unwrap_or((b'l', text));
             parsed_rows.push(Row { text: text.to_string(), action: action.to_string(), kind });
         }
-        self.windows.retain(|window| window.id != id);
-        if self.windows.len() >= MAX_WINDOWS { return; }
-        self.windows.push(Window { id: id.to_string(), role, x, y, width, height,
-                                   title: title.to_string(), rows: parsed_rows, native: false,
-                                   maximized: false, minimized: false, restore: None });
+        if let Some(index) = self.windows.iter().position(|window| window.id == id) {
+            let mut window = self.windows.remove(index);
+            window.role = role;
+            window.title = title.to_string();
+            window.rows = parsed_rows;
+            window.minimized = false;
+            self.windows.push(window);
+        } else {
+            if self.windows.len() >= MAX_WINDOWS { return; }
+            self.windows.push(Window { id: id.to_string(), role, x, y, width, height,
+                                       title: title.to_string(), rows: parsed_rows, native: false,
+                                       maximized: false, minimized: false, restore: None });
+        }
         self.render();
     }
 
@@ -214,7 +222,8 @@ impl Compositor {
             self.cursor_y >= window.y + row_top && self.cursor_y < window.y + window.height - 4
         } else { self.cursor_y >= window.y + row_top };
         let action = if in_rows { window.rows.get(row).map(|row| row.action.clone()) } else { None };
-        if matches!(window.role, b'W' | b'L') && self.cursor_y < window.y + HEADER_HEIGHT {
+        if matches!(window.role, b'W' | b'L') && !window.maximized
+            && self.cursor_y < window.y + HEADER_HEIGHT {
             self.drag = Some((window.id.clone(), self.cursor_x - window.x, self.cursor_y - window.y));
         }
         self.windows.push(window); // focused window becomes frontmost
