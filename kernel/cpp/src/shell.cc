@@ -13,6 +13,7 @@ constexpr pippin_shell_item shellItem(ui::Control const& control) {
         control.action,
         control.kind,
         static_cast<uint8_t>(control.style),
+        control.flags,
         control.frame.x,
         control.frame.y,
         control.frame.width,
@@ -21,7 +22,7 @@ constexpr pippin_shell_item shellItem(ui::Control const& control) {
 }
 
 constexpr pippin_shell_item legacyItem(const char* text, const char* action, uint8_t kind) {
-    return {text, action, kind, PIPPIN_CONTROL_STYLE_PLAIN, 0, 0, 0, 0};
+    return {text, action, kind, PIPPIN_CONTROL_STYLE_PLAIN, 0, 0, 0, 0, 0};
 }
 
 constexpr ui::ControlSpec kPanelSpecs[] = {
@@ -73,6 +74,8 @@ constexpr auto kDockControls = ui::flow(
 );
 
 static_assert(static_cast<uint8_t>(ui::ControlStyle::TILE) == PIPPIN_CONTROL_STYLE_TILE);
+static_assert(ui::CONTROL_FOCUSABLE == PIPPIN_CONTROL_FLAG_FOCUSABLE);
+static_assert(ui::CONTROL_DISABLED == PIPPIN_CONTROL_FLAG_DISABLED);
 static_assert(kDockControls[0].frame.x == 12 && kDockControls[0].frame.width == 104);
 static_assert(kDockControls[1].frame.x == 132 && kDockControls[1].frame.width == 104);
 static_assert(kDockControls[2].frame.x == 252 && kDockControls[2].frame.width == 104);
