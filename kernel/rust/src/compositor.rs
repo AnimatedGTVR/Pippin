@@ -26,7 +26,10 @@ const SHELL_SURFACE_HOVER: u32 = 0x002d3540;
 const SHELL_BORDER: u32 = 0x00414b57;
 const SHELL_TEXT: u32 = 0x00f3f5f7;
 const SHELL_MUTED: u32 = 0x00aeb8c2;
+const CONTROL_STYLE_SUBTLE: u8 = 1;
 const CONTROL_STYLE_ACCENT: u8 = 3;
+const CONTROL_STYLE_SEARCH: u8 = 4;
+const CONTROL_STYLE_STATUS: u8 = 5;
 const HEADER_HEIGHT: i32 = 44;
 
 #[derive(Clone)]
@@ -343,11 +346,22 @@ impl Compositor {
         } else if window.role == b'P' {
             let local_x = self.cursor_x - window.x;
             let local_y = self.cursor_y - window.y;
-            let row = if (12..=210).contains(&local_x) { 0 }
-                else if (420..=604).contains(&local_x) { 1 }
-                else if (774..=1012).contains(&local_x) { 2 }
-                else { usize::MAX };
-            (row, (6..42).contains(&local_y))
+            let laid_out = window.rows.iter().any(|row| row.width > 0 && row.height > 0);
+
+            if laid_out {
+                let row = window.rows.iter().position(|row| {
+                    row.width > 0 && row.height > 0
+                        && local_x >= row.x && local_x < row.x + row.width
+                        && local_y >= row.y && local_y < row.y + row.height
+                }).unwrap_or(usize::MAX);
+                (row, row != usize::MAX)
+            } else {
+                let row = if (12..=210).contains(&local_x) { 0 }
+                    else if (420..=604).contains(&local_x) { 1 }
+                    else if (774..=1012).contains(&local_x) { 2 }
+                    else { usize::MAX };
+                (row, (6..42).contains(&local_y))
+            }
         } else {
             let row_top = 62;
             (((self.cursor_y - window.y - row_top) / 42) as usize,
@@ -389,32 +403,61 @@ impl Compositor {
 
     fn window(&mut self, window: Window, focused: bool) {
         if window.role == b'P' {
-            // Hideo-inspired taskbar: one quiet dark strip with three clear
-            // zones instead of a row of debug buttons.
+            // Hideo-inspired taskbar. Control geometry now comes from the C++
+            // Control Manager instead of being hand-placed in the compositor.
             self.fill_rect(window.x, window.y, window.width, window.height, SHELL_DARK);
             self.fill_rect(window.x, window.y + window.height - 1, window.width, 1, SHELL_BORDER);
 
-            // Left search pill.
-            self.rounded_rect(window.x + 12, window.y + 7, 198, 34, SHELL_SURFACE, SHELL_BORDER);
-            self.fill_rect(window.x + 28, window.y + 18, 10, 10, CHROME_ACCENT);
-            if let Some(row) = window.rows.get(0) {
-                self.text(window.x + 48, window.y + 17, &row.text, 1, SHELL_TEXT);
-            }
+            let managed = window.rows.iter().any(|row| row.width > 0 && row.height > 0);
+            if managed {
+                for row in window.rows.iter().take(8) {
+                    if row.width <= 0 || row.height <= 0 { continue; }
 
-            // Center date/time/identity pill.
-            self.rounded_rect(window.x + 420, window.y + 7, 184, 34, SHELL_SURFACE, SHELL_BORDER);
-            if let Some(row) = window.rows.get(1) {
-                let text_width = row.text.len() as i32 * 6;
-                self.text(window.x + 512 - text_width / 2, window.y + 17, &row.text, 1, SHELL_TEXT);
-            }
+                    let x = window.x + row.x;
+                    let y = window.y + row.y;
+                    let fill = match row.style {
+                        CONTROL_STYLE_ACCENT => CHROME_ACCENT,
+                        _ => SHELL_SURFACE,
+                    };
 
-            // Right system status pill.
-            self.rounded_rect(window.x + 774, window.y + 7, 238, 34, SHELL_SURFACE, SHELL_BORDER);
-            self.fill_rect(window.x + 790, window.y + 18, 10, 8, 0x005bc0eb);
-            self.fill_rect(window.x + 808, window.y + 16, 6, 12, 0x00d5dae0);
-            self.fill_rect(window.x + 822, window.y + 17, 16, 10, 0x0089d185);
-            if let Some(row) = window.rows.get(2) {
-                self.text(window.x + 850, window.y + 17, &row.text, 1, SHELL_MUTED);
+                    self.rounded_rect(x, y, row.width, row.height, fill, SHELL_BORDER);
+
+                    match row.style {
+                        CONTROL_STYLE_SEARCH => {
+                            self.fill_rect(x + 16, y + 11, 10, 10, CHROME_ACCENT);
+                            self.text(x + 36, y + 10, &row.text, 1, SHELL_TEXT);
+                        }
+                        CONTROL_STYLE_STATUS => {
+                            self.fill_rect(x + 16, y + 11, 10, 8, 0x005bc0eb);
+                            self.fill_rect(x + 34, y + 9, 6, 12, 0x00d5dae0);
+                            self.fill_rect(x + 48, y + 10, 16, 10, 0x0089d185);
+                            self.text(x + 76, y + 10, &row.text, 1, SHELL_MUTED);
+                        }
+                        CONTROL_STYLE_SUBTLE => {
+                            let text_width = row.text.len() as i32 * 6;
+                            self.text(x + (row.width - text_width) / 2, y + 10,
+                                      &row.text, 1, SHELL_TEXT);
+                        }
+                        _ => {
+                            self.text(x + 16, y + 10, &row.text, 1, SHELL_TEXT);
+                        }
+                    }
+                }
+            } else {
+                // Compatibility path for older bridge-created panel surfaces.
+                self.rounded_rect(window.x + 12, window.y + 7, 198, 34, SHELL_SURFACE, SHELL_BORDER);
+                if let Some(row) = window.rows.get(0) {
+                    self.text(window.x + 48, window.y + 17, &row.text, 1, SHELL_TEXT);
+                }
+                self.rounded_rect(window.x + 420, window.y + 7, 184, 34, SHELL_SURFACE, SHELL_BORDER);
+                if let Some(row) = window.rows.get(1) {
+                    let text_width = row.text.len() as i32 * 6;
+                    self.text(window.x + 512 - text_width / 2, window.y + 17, &row.text, 1, SHELL_TEXT);
+                }
+                self.rounded_rect(window.x + 774, window.y + 7, 238, 34, SHELL_SURFACE, SHELL_BORDER);
+                if let Some(row) = window.rows.get(2) {
+                    self.text(window.x + 850, window.y + 17, &row.text, 1, SHELL_MUTED);
+                }
             }
             return;
         }
