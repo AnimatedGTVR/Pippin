@@ -52,6 +52,7 @@ pub struct Shell {
     len: usize,
     shift: bool,
     alt: bool,
+    terminal_capture: bool,
     caps: bool,
     extended: bool,
     last_was_cr: bool,
@@ -64,7 +65,7 @@ impl Shell {
     pub fn new(terminal: Terminal, bundle: Option<file::Bundle<'static>>) -> Self {
         let mut shell = Self {
             terminal, line: [0; LINE_CAPACITY], len: 0,
-            shift: false, alt: false, caps: false, extended: false, last_was_cr: false,
+            shift: false, alt: false, terminal_capture: false, caps: false, extended: false, last_was_cr: false,
             bundle, desktop: None, bridge: bridge::Bridge::new(),
         };
         let _ = writeln!(shell.terminal, "Pippin command shell (M4 preview)");
@@ -107,11 +108,38 @@ impl Shell {
         if self.desktop.is_some() {
             // Global desktop shortcut: Alt+T asks the shell client to open its terminal.
             // Track both Alt keys' set-1 make/break codes before forwarding normal input.
-            if scan == 0x38 { self.alt = true; return; }
-            if scan == 0xb8 { self.alt = false; return; }
+            // Set-1 Alt is 0x38/0xb8. An E0 prefix may precede right Alt, so do not
+            // discard the following byte while the graphical desktop is active.
+            if scan == 0xe0 { self.extended = true; return; }
+            if scan == 0x38 { self.alt = true; self.extended = false; return; }
+            if scan == 0xb8 { self.alt = false; self.extended = false; return; }
             if self.alt && scan == 0x14 {
                 self.bridge.action("terminal.open");
+                self.terminal_capture = true;
+                self.extended = false;
                 return;
+            }
+            if scan & 0x80 != 0 && (scan & 0x7f) == 0x14 { return; }
+            self.extended = false;
+            if self.terminal_capture && scan & 0x80 == 0 {
+                if scan == 0x1c {
+                    self.bridge.action("terminal.run");
+                    return;
+                }
+                if scan == 0x0e {
+                    self.bridge.action("terminal.backspace");
+                    return;
+                }
+                if let Some((plain, shifted)) = key_pair(scan) {
+                    let byte = if plain.is_ascii_alphabetic() {
+                        if self.shift ^ self.caps { plain.to_ascii_uppercase() } else { plain }
+                    } else if self.shift { shifted } else { plain };
+                    if (0x20..=0x7e).contains(&byte) {
+                        let action = alloc::format!("terminal.key.{:02x}", byte);
+                        self.bridge.action(&action);
+                        return;
+                    }
+                }
             }
             let client_active = self.desktop.as_ref().is_some_and(|desktop| desktop.has_client_windows());
             if scan == 0x01 && !client_active {
