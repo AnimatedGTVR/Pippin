@@ -103,7 +103,7 @@ impl Compositor {
                     rows,
                     native: false,
                     maximized: false,
-                    minimized: false,
+                    minimized: !surface.visible,
                     restore: None,
                 });
             }
