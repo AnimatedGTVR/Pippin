@@ -4,6 +4,7 @@
 #   scripts/run-qemu.sh             boot with a QEMU window and serial console
 #   scripts/run-qemu.sh --headless  serial console only
 #   scripts/run-qemu.sh --gdb       pause and listen on :1234 for GDB
+#   scripts/run-qemu.sh --defaultqemu use QEMU's normal display frontend
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -19,6 +20,7 @@ gdb=false
 disk=false
 shell=false
 window_server=false
+default_qemu=false
 for option in "$@"; do
     case "$option" in
         --headless) display=none ;;
@@ -26,11 +28,18 @@ for option in "$@"; do
         --disk) disk=true ;;
         --shell) shell=true ;;
         --window-server) window_server=true ;;
+        --defaultqemu) default_qemu=true ;;
         *) echo "unknown option: $option" >&2; exit 2 ;;
     esac
 done
 
-args=(-machine q35 -m 256M -display "$display" -vga std -serial stdio -kernel "$ELF")
+args=(-machine q35 -m 256M)
+if [[ "$display" == "none" ]]; then
+        args+=( -display none )
+elif ! $default_qemu; then
+        args+=( -display "$display" )
+fi
+args+=( -vga std -serial stdio -kernel "$ELF" )
 if $shell || $window_server; then
         UI_SOCKET="$ROOT/build/pippin-ui.sock"
         rm -f "$UI_SOCKET"
