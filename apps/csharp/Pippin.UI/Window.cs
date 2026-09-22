@@ -21,7 +21,7 @@ public sealed class Window(string title, int width, int height)
     {
         if (!IsOpen) return;
         var canvas = new Canvas(Width, Height);
-        canvas.Fill(0x0019232d);
+        canvas.Fill(0x00f7f7f5);
         Content?.Arrange(new Rect(0, 0, Width, Height));
         Content?.Paint(canvas);
         await client.SubmitSurfaceAsync(Id, canvas.Pixels);
