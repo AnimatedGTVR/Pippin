@@ -288,6 +288,7 @@ fn core_main(mb_info: Option<u32>) -> ! {
         let _ = ps2::poll(port);
         shell.poll_serial();
         shell.poll_bridge();
+        elf::reap_if_exited();
         while let Some(input) = event::poll() {
             if input.kind == ps2::KEY_EVENT {
                 shell.key_scancode(input.value as u8);
