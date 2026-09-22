@@ -12,7 +12,8 @@ SECTIONS
        user mappings never replace the kernel's physical identity window. */
     . = 0x0000000100000000;
 
-    .text : ALIGN(0x1000)
+    . = ALIGN(0x1000);
+    .text :
     {
         *(.text .text.*)
         *(.rodata .rodata.*)
@@ -24,7 +25,8 @@ SECTIONS
         *(.data .data.*)
     } :data
 
-    .bss : ALIGN(16)
+    . = ALIGN(16);
+    .bss (NOLOAD) :
     {
         *(.bss .bss.*)
         *(COMMON)
