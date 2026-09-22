@@ -1,37 +1,33 @@
 # Apps
 
-The C# M4 shell is in `csharp/`: `Pippin.UI` describes windows and widget trees;
-`Pippin.Shell` defines separate panel, dock, launcher, settings, files,
-notifications, wallpaper and sample app surfaces. Build and inspect them on the
-host with `dotnet run --project csharp/Pippin.Shell/Pippin.Shell.csproj`.
-From the repository root, `make run-shell` launches the interactive C# host
-shell and displays its surfaces in QEMU.
-`make run-ui` runs the newer window API: `Pippin.Window` is the low-level
-client, `Pippin.Broker` multiplexes independent processes, `Pippin.UI`
-provides the first layout and widget classes, and `Pippin.Examples` launches
-About and Task Manager as separate processes.
+Pippin's desktop shell is now native C++. The current shell model is compiled
+from `kernel/cpp/src/shell.cc`, crosses a deliberately small C ABI in
+`kernel/c/include/pippin/shell.h`, and is consumed by the Rust compositor.
 
-The guest cannot run .NET code yet. These descriptions define the intended
-client surface contract; a COM2 bridge now displays those surfaces in QEMU and
-returns clicks to C#. The remaining application work arrives in this order:
+The built-in shell currently defines the panel, dock, launcher, Files, Settings,
+and Terminal surfaces. Panel and dock start visible; the remaining surfaces are
+created hidden and restored directly inside Pippin when their shell actions fire.
+No host .NET runtime or COM2 C# bridge is required for the default desktop.
 
-- **Milestone 4.5 — C# desktop shell bridge:** host C# clients send separate
-  shell windows to the Rust compositor.
-- **Guest runtime:** a managed runtime, app loader and IPC move C# clients
-  inside Pippin later.
-- **Milestone 5 — native apps:** C++ and Rust GUI applications use the Toolbox
-  API (Window/Menu/Control managers, event loop).
-- **Milestone 6 — managed app expansion:** packaging and services for C# apps.
+The previous C# experiments remain under `apps/csharp/` as a design/prototyping
+reference while the native C++ toolkit and application layer are developed.
+They are not built by `make run`.
 
-C# is the planned desktop shell language on x86-64. The kernel and compositor
-remain freestanding Rust/C++ code. A possible 68k port needs a separate shell
-decision.
-Vanta is another candidate for native apps and utilities once its compiler can
-target Pippin and use the Toolbox ABI; it has no scheduled milestone yet.
-See docs/gui.md and docs/architecture.md (§ Application layer).
+The native application work now proceeds in this order:
+
+- **Native shell model:** C++ owns desktop surface definitions and shell behavior.
+- **C ABI boundary:** C keeps the cross-language contract simple and stable.
+- **Rust compositor:** Rust validates, owns, composites, and routes input.
+- **C++ UI toolkit:** reusable Button, Label, Stack, Card, Icon, TextField, etc.
+- **Native loader:** move shell/apps from in-kernel bootstrap code into ring-3 C++
+  processes once Pippin has a general executable loader and user memory model.
+- **Apps:** Files, Settings, Terminal, and future apps use the same C++ toolkit.
+
+Vanta can target the same Toolbox/C ABI later without changing the compositor.
+
 # M3 bundle
 
 `demo/hello.pipb` is a small versioned data bundle. The File Manager validates
 and reads it from a FAT32 AHCI test disk (`make run-disk`) or a Limine ISO module
-(`make iso`). It is not yet an executable application; user app loading and the
-Toolbox client API come later.
+(`make iso`). It is not yet an executable application; general native executable
+loading comes later.
