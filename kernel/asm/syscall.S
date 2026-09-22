@@ -47,35 +47,4 @@ pippin_syscall_entry:
 pippin_syscall_user_rsp:
     .quad 0
 
-/* This page is copied to low user memory before entering ring 3. */
-.section .rodata.user_demo, "a", @progbits
-.p2align 4
-.global pippin_user_demo_start
-.global pippin_user_demo_end
-pippin_user_demo_start:
-    movq %rdi, %r12              /* port ID from synthetic interrupt frame */
-    movq $2, %rax                /* MMAP one user page */
-    movq $0x600000, %rdi
-    syscall
-    cmpq $0x600000, %rax
-    jne 1f
-    movb $0x5a, (%rax)
-    movq $3, %rax                /* IPC_SEND(port, kind, value) */
-    movq %r12, %rdi
-    movq $9, %rsi
-    movq $0xC0DE, %rdx
-    syscall
-    movq $1, %rax                /* LOG(pointer, length) */
-    leaq .Luser_msg(%rip), %rdi
-    movq $(.Luser_msg_end - .Luser_msg), %rsi
-    syscall
-    movq $0, %rax                /* EXIT */
-    syscall
-1:  pause
-    jmp 1b
-.Luser_msg:
-    .ascii "  syscall:          ring-3 log and IPC worked\n"
-.Luser_msg_end:
-pippin_user_demo_end:
-
-.section .note.GNU-stack,"",@progbits
+.section .note.GNU-stack,"",@progbits\n
