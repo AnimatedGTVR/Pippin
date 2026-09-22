@@ -19,7 +19,7 @@ constexpr char kMessage[] =
 
 } // namespace
 
-extern "C" [[noreturn]] void _start(uint64_t event_port) {
+extern "C" __attribute__((noreturn)) void _start(uint64_t event_port) {
     // Prove both IPC and syscall-visible .rodata work from the loaded ELF.
     (void)syscall3(3, event_port, 9, 0xC0DE);
     (void)syscall3(1, reinterpret_cast<uint64_t>(kMessage), sizeof(kMessage) - 1);
