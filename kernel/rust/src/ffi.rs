@@ -7,6 +7,43 @@
 use core::slice;
 use core::str;
 
+#[repr(C)]
+pub struct ShellItemRaw {
+    text: *const u8,
+    action: *const u8,
+    kind: u8,
+}
+
+#[repr(C)]
+pub struct ShellSurfaceRaw {
+    id: *const u8,
+    role: u8,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    title: *const u8,
+    items: *const ShellItemRaw,
+    item_count: usize,
+}
+
+pub struct ShellItem {
+    pub text: &'static str,
+    pub action: &'static str,
+    pub kind: u8,
+}
+
+pub struct ShellSurface {
+    pub id: &'static str,
+    pub role: u8,
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+    pub title: &'static str,
+    pub items: &'static [ShellItemRaw],
+}
+
 extern "C" {
     /// Version banner from the C++ kernel runtime.
     fn pippin_cpp_version() -> *const u8;
@@ -20,6 +57,11 @@ extern "C" {
                          class_code: *mut u8, subclass: *mut u8) -> bool;
     fn pippin_ahci_bar() -> u64;
     fn pippin_qemu_vga_bar() -> u64;
+
+    fn pippin_shell_abi_version() -> u32;
+    fn pippin_shell_surface_valid(surface: *const ShellSurfaceRaw) -> i32;
+    fn pippin_shell_surface_count() -> usize;
+    fn pippin_shell_surface_at(index: usize) -> *const ShellSurfaceRaw;
 }
 
 /// Read the C-string version banner exported by the C++ runtime.
@@ -40,6 +82,41 @@ pub fn pci_device_count() -> u32 { unsafe { pippin_pci_device_count() } }
 pub fn pci_parent(index: u32) -> i32 { unsafe { pippin_pci_parent(index) } }
 pub fn ahci_bar() -> u64 { unsafe { pippin_ahci_bar() } }
 pub fn qemu_vga_bar() -> u64 { unsafe { pippin_qemu_vga_bar() } }
+pub fn shell_abi_version() -> u32 { unsafe { pippin_shell_abi_version() } }
+
+pub fn shell_surface_count() -> usize { unsafe { pippin_shell_surface_count() } }
+
+pub fn shell_surface(index: usize) -> Option<ShellSurface> {
+    let raw = unsafe { pippin_shell_surface_at(index).as_ref()? };
+    if unsafe { pippin_shell_surface_valid(raw) } == 0 { return None; }
+
+    let items = if raw.item_count == 0 {
+        &[]
+    } else {
+        if raw.items.is_null() { return None; }
+        unsafe { slice::from_raw_parts(raw.items, raw.item_count) }
+    };
+
+    Some(ShellSurface {
+        id: unsafe { cstr_to_str(raw.id) },
+        role: raw.role,
+        x: raw.x,
+        y: raw.y,
+        width: raw.width,
+        height: raw.height,
+        title: unsafe { cstr_to_str(raw.title) },
+        items,
+    })
+}
+
+pub fn shell_item(raw: &ShellItemRaw) -> ShellItem {
+    ShellItem {
+        text: unsafe { cstr_to_str(raw.text) },
+        action: unsafe { cstr_to_str(raw.action) },
+        kind: raw.kind,
+    }
+}
+
 pub fn pci_device(index: u32) -> Option<(u16, u16, u8, u8)> {
     let (mut vendor, mut product, mut class, mut subclass) = (0, 0, 0, 0);
     if unsafe { pippin_pci_device(index, &mut vendor, &mut product, &mut class, &mut subclass) } {
