@@ -76,6 +76,7 @@ add_custom_command(
     "${PIPPIN_RUST_CRATE_DIR}/src/desktop.rs"
     "${PIPPIN_RUST_CRATE_DIR}/src/ffi.rs"
     "${PIPPIN_RUST_CRATE_DIR}/src/event.rs"
+    "${PIPPIN_RUST_CRATE_DIR}/src/elf.rs"
     "${PIPPIN_RUST_CRATE_DIR}/src/file.rs"
     "${PIPPIN_RUST_CRATE_DIR}/src/gdt.rs"
     "${PIPPIN_RUST_CRATE_DIR}/src/heap.rs"
