@@ -144,8 +144,8 @@ impl Compositor {
             return true;
         }
         if let Some(id) = line.strip_prefix("M|") {
-            if let Some(window) = self.windows.iter_mut().find(|window| window.id == id) {
-                window.minimized = true;
+            if let Some(index) = self.windows.iter().position(|window| window.id == id) {
+                self.windows[index].minimized = true;
                 self.render();
             }
             return true;
@@ -261,7 +261,17 @@ impl Compositor {
         if matches!(window.role, b'W' | b'L') && self.cursor_y >= window.y + 14 && self.cursor_y < window.y + 32 {
             let control = self.cursor_x - (window.x + 15);
             if (0..18).contains(&control) {
-                return if window.native { None } else { Some(alloc::format!("{}.close", window.id)) };
+                if window.native {
+                    // Native compositor test windows really close.
+                    return None;
+                }
+                let action = alloc::format!("{}.close", window.id);
+                // Built-in C++ shell surfaces stay resident so they can be
+                // restored later without a host process recreating them.
+                window.minimized = true;
+                self.windows.push(window);
+                self.render();
+                return Some(action);
             }
             if (29..47).contains(&control) {
                 window.minimized = true;
