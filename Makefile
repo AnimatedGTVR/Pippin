@@ -38,9 +38,9 @@ disk:
 run-disk: kernel disk
 	./scripts/run-qemu.sh $(QEMU_MODE) --disk
 
-iso:
+iso: preflight
 	cmake -S . -B $(BUILD_DIR) -G "Unix Makefiles"
-	cmake --build $(BUILD_DIR) --target kernel-limine.elf -j
+	bash -c 'source "$(BUILD_DIR)/pippin-limits.env"; cmake --build "$(BUILD_DIR)" --target kernel-limine.elf -j"$PIPPIN_BUILD_JOBS"'
 	./scripts/make-iso.sh
 
 clean:
