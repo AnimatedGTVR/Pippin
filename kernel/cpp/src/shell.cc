@@ -18,22 +18,77 @@ constexpr pippin_shell_item kDockItems[] = {
     {"Settings", "settings.open", 'b'},
 };
 
+constexpr pippin_shell_item kLauncherItems[] = {
+    {"Applications", "", 'h'},
+    {"Search apps", "launcher.search", 's'},
+    {"Files", "files.open", 'b'},
+    {"Settings", "settings.open", 'b'},
+    {"Terminal", "terminal.open", 'b'},
+};
+
+constexpr pippin_shell_item kFilesItems[] = {
+    {"Home", "", 'h'},
+    {"Search files", "files.search", 's'},
+    {"Documents", "files.documents.open", 'b'},
+    {"Downloads", "files.downloads.open", 'b'},
+};
+
+constexpr pippin_shell_item kSettingsItems[] = {
+    {"Settings", "", 'h'},
+    {"Appearance", "", 'h'},
+    {"Animations", "settings.animations.toggle", 't'},
+    {"Desktop", "", 'h'},
+    {"Show dock", "settings.dock.toggle", 't'},
+};
+
+constexpr pippin_shell_item kTerminalItems[] = {
+    {"Pippin Terminal", "", 'h'},
+    {"Native C++ shell online.", "", 'l'},
+    {"pippin> ", "terminal.input", 's'},
+};
+
 constexpr pippin_shell_surface kSurfaces[] = {
     {
-        "panel",
-        PIPPIN_SHELL_ROLE_PANEL,
+        "panel", PIPPIN_SHELL_ROLE_PANEL, 1,
         0, 0, 1024, 48,
         "Panel",
         kPanelItems,
         sizeof(kPanelItems) / sizeof(kPanelItems[0]),
     },
     {
-        "dock",
-        PIPPIN_SHELL_ROLE_DOCK,
+        "dock", PIPPIN_SHELL_ROLE_DOCK, 1,
         328, 688, 368, 68,
         "Dock",
         kDockItems,
         sizeof(kDockItems) / sizeof(kDockItems[0]),
+    },
+    {
+        "launcher", PIPPIN_SHELL_ROLE_LAUNCHER, 0,
+        262, 112, 500, 400,
+        "Applications",
+        kLauncherItems,
+        sizeof(kLauncherItems) / sizeof(kLauncherItems[0]),
+    },
+    {
+        "files", PIPPIN_SHELL_ROLE_WINDOW, 0,
+        100, 94, 620, 500,
+        "Files",
+        kFilesItems,
+        sizeof(kFilesItems) / sizeof(kFilesItems[0]),
+    },
+    {
+        "settings", PIPPIN_SHELL_ROLE_WINDOW, 0,
+        272, 116, 520, 430,
+        "Settings",
+        kSettingsItems,
+        sizeof(kSettingsItems) / sizeof(kSettingsItems[0]),
+    },
+    {
+        "terminal", PIPPIN_SHELL_ROLE_WINDOW, 0,
+        192, 132, 640, 420,
+        "Terminal",
+        kTerminalItems,
+        sizeof(kTerminalItems) / sizeof(kTerminalItems[0]),
     },
 };
 
