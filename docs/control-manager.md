@@ -107,11 +107,12 @@ constexpr auto controls = ui::flow(
 );
 ```
 
-## ABI v2
+## ABI v3
 
-Shell ABI v2 carries per-item:
+Shell ABI v3 carries per-item:
 
 - style
+- interaction flags
 - x/y
 - width/height
 
@@ -120,6 +121,43 @@ surfaces one at a time.
 
 Both the Dock and Panel now render and hit-test controls using rectangles
 calculated by C++. The compositor no longer owns their item placement.
+
+## Interaction state
+
+Control Manager controls now distinguish static capability from runtime state.
+
+C++ declares two interaction flags:
+
+- `CONTROL_FOCUSABLE` — the control participates in keyboard traversal
+- `CONTROL_DISABLED` — the control cannot focus or activate
+
+Controls with non-empty actions become focusable by default. `ui::disabled()`
+removes focusability and marks the control disabled. `ui::focusable()` can
+explicitly opt a control in or out.
+
+Rust owns transient runtime state because pointer and keyboard events already
+terminate at the compositor:
+
+- hovered control
+- pressed control
+- focused control
+
+The renderer combines those runtime states with C++ style metadata. Hovered and
+pressed controls receive distinct shell surfaces, focused controls receive the
+accent border, and disabled controls are dimmed.
+
+Mouse hit-testing only considers enabled controls with actions. Clicking a
+focusable control also gives it keyboard focus.
+
+Keyboard behavior:
+
+- `Tab` moves to the next visible focusable native control
+- `Shift+Tab` moves backward
+- `Enter` or `Space` activates the focused control
+- active external/client windows retain their own keyboard routing instead of
+  having Tab intercepted by the shell
+
+The Dock and Panel are the first surfaces using this interaction model.
 
 ## Why this boundary
 
@@ -136,9 +174,9 @@ the C++ shell moves fully into ring-3 ELF processes.
 
 The Control Manager should stay focused:
 
-1. add hover, pressed, and disabled control state
-2. move generic window rows/buttons away from hardcoded 42 px spacing
-3. add reusable group/proxy node composition instead of flat control arrays
-4. add focus and keyboard activation
+1. move generic window rows/buttons away from hardcoded 42 px spacing
+2. add reusable group/proxy node composition instead of flat control arrays
+3. add focus scopes for individual windows/dialogs
+4. add richer pointer semantics such as activate-on-release and drag cancellation
 5. once user apps can own surfaces directly, move this same C++ manager into the
    native app/toolkit layer
