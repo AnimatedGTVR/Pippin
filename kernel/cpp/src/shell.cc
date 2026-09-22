@@ -166,7 +166,7 @@ static_assert(kFilesControls.valid());
 static_assert(kFilesControls.size() == 4);
 static_assert(kFilesControls[0].frame.y == 64);
 static_assert(kFilesControls[1].frame.y == 106);
-static_assert(kFilesControls[2].frame.y == 169);
+static_assert(kFilesControls[2].frame.y == 164);
 static_assert(kFilesControls[2].frame.width == 280);
 static_assert(kFilesControls[3].frame.x == 316);
 static_assert(kFilesControls[3].frame.width == 280);
