@@ -269,6 +269,7 @@ impl Compositor {
                                        title: title.to_string(), rows: parsed_rows, native: false,
                                        maximized: false, minimized: false, restore: None });
         }
+        self.repair_focus_scope();
         self.render();
         true
     }
@@ -288,15 +289,16 @@ impl Compositor {
         }
 
         if scan & 0x80 == 0 {
-            // Tab / Shift+Tab moves focus across native managed controls.
+            // Tab / Shift+Tab stays inside the active native focus scope.
             if scan == 0x0f {
                 self.focus_next(reverse_focus);
                 self.render();
                 return (None, Vec::new());
             }
 
-            // Enter or Space activates the focused control.
+            // Enter or Space activates only a still-valid focused control.
             if matches!(scan, 0x1c | 0x39) {
+                self.repair_focus_scope();
                 if let Some(action) = self.focused_action() {
                     self.render();
                     return (Some(action), Vec::new());
