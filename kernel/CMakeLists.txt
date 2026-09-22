@@ -5,7 +5,9 @@ add_subdirectory(cpp)
 add_executable(kernel.elf
   "${CMAKE_CURRENT_SOURCE_DIR}/asm/boot.S"
   "${CMAKE_CURRENT_SOURCE_DIR}/asm/isr.S")
-target_sources(kernel.elf PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/asm/syscall.S")
+target_sources(kernel.elf PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/asm/syscall.S"
+  "${PIPPIN_APP_BLOB}")
 
 # Archives reference each other across the language boundary (e.g. Rust
 # calls pippin_driver_count while C++ calls pippin_core_main), so link them
@@ -29,7 +31,7 @@ target_link_options(kernel.elf PRIVATE
 )
 
 # The kernel ELF depends on cargo having produced the Rust archive.
-add_dependencies(kernel.elf rust-kernel)
+add_dependencies(kernel.elf rust-kernel pippin-native-app-blob)
 
 # Place the final artifact at build/kernel.elf (scripts/Makefile expect it).
 set_target_properties(kernel.elf PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
@@ -38,7 +40,8 @@ set_target_properties(kernel.elf PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BI
 add_executable(kernel-limine.elf
   "${CMAKE_CURRENT_SOURCE_DIR}/asm/isr.S"
   "${CMAKE_CURRENT_SOURCE_DIR}/asm/syscall.S"
-  "${CMAKE_CURRENT_SOURCE_DIR}/cpp/src/limine.cc")
+  "${CMAKE_CURRENT_SOURCE_DIR}/cpp/src/limine.cc"
+  "${PIPPIN_APP_BLOB}")
 target_include_directories(kernel-limine.elf PRIVATE "${CMAKE_SOURCE_DIR}/kernel/c/include")
 target_link_libraries(kernel-limine.elf PRIVATE
   -Wl,--start-group pippin_kernel_cpp pippin_kernel_c pippin_drivers
@@ -47,5 +50,5 @@ target_link_options(kernel-limine.elf PRIVATE
   -no-pie -nostdlib -Wl,--gc-sections -Wl,--build-id=none
   -Wl,-Map=${CMAKE_BINARY_DIR}/kernel-limine.map
   -T "${CMAKE_SOURCE_DIR}/kernel/limine-linker.ld")
-add_dependencies(kernel-limine.elf rust-kernel)
+add_dependencies(kernel-limine.elf rust-kernel pippin-native-app-blob)
 set_target_properties(kernel-limine.elf PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
