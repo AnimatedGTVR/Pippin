@@ -141,8 +141,11 @@ impl Desktop {
         }
     }
 
-    pub fn key_scancode(&self, scan: u8, text: Option<u8>) -> Vec<Event> {
-        self.compositor.key_scancode(scan, text)
+    pub fn key_scancode(&mut self, scan: u8, text: Option<u8>, reverse_focus: bool)
+        -> (Option<String>, Vec<Event>) {
+        let output = self.compositor.key_scancode(scan, text, reverse_focus);
+        self.compositor.present(self.framebuffer as *mut u32);
+        output
     }
 
     pub fn has_client_windows(&self) -> bool { self.compositor.has_client_windows() }

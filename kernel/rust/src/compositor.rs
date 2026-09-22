@@ -22,6 +22,9 @@ const CHROME_CLOSE: u32 = 0x00d95d55;
 const CHROME_SHADOW: u32 = 0x00151b22;
 const SHELL_DARK: u32 = 0x0014191f;
 const SHELL_SURFACE: u32 = 0x00222931;
+const SHELL_SURFACE_HOVER: u32 = 0x002d3540;
+const SHELL_SURFACE_PRESSED: u32 = 0x00384452;
+const SHELL_DISABLED: u32 = 0x0020272e;
 const SHELL_BORDER: u32 = 0x00414b57;
 const SHELL_TEXT: u32 = 0x00f3f5f7;
 const SHELL_MUTED: u32 = 0x00aeb8c2;
@@ -29,6 +32,8 @@ const CONTROL_STYLE_SUBTLE: u8 = 1;
 const CONTROL_STYLE_ACCENT: u8 = 3;
 const CONTROL_STYLE_SEARCH: u8 = 4;
 const CONTROL_STYLE_STATUS: u8 = 5;
+const CONTROL_FLAG_FOCUSABLE: u8 = 1 << 0;
+const CONTROL_FLAG_DISABLED: u8 = 1 << 1;
 const HEADER_HEIGHT: i32 = 44;
 
 #[derive(Clone)]
@@ -37,6 +42,7 @@ struct Row {
     action: String,
     kind: u8,
     style: u8,
+    flags: u8,
     x: i32,
     y: i32,
     width: i32,
@@ -68,6 +74,9 @@ pub struct Compositor {
     cursor_x: i32,
     cursor_y: i32,
     left_down: bool,
+    hovered_control: Option<(String, usize)>,
+    pressed_control: Option<(String, usize)>,
+    focused_control: Option<(String, usize)>,
     drag: Option<(String, i32, i32)>, // window ID and pointer offset
 }
 
@@ -78,12 +87,16 @@ impl Compositor {
             windows: Vec::new(), next_id: 1,
             wallpaper_base: 0x002f80ed,
             cursor_x: (WIDTH / 2) as i32, cursor_y: (HEIGHT / 2) as i32,
-            left_down: false, drag: None,
+            left_down: false,
+            hovered_control: None,
+            pressed_control: None,
+            focused_control: None,
+            drag: None,
         };
 
         // The visible shell model now comes from C++ through the tiny C ABI.
         // Rust remains responsible for validation, ownership and rendering.
-        if ffi::shell_abi_version() == 2 {
+        if ffi::shell_abi_version() == 3 {
             for index in 0..ffi::shell_surface_count().min(MAX_WINDOWS) {
                 let Some(surface) = ffi::shell_surface(index) else { continue; };
                 if !matches!(surface.role, b'P' | b'D' | b'L' | b'N' | b'W') {
@@ -102,6 +115,7 @@ impl Compositor {
                         action: item.action.to_string(),
                         kind: item.kind,
                         style: item.style,
+                        flags: item.flags,
                         x: item.x,
                         y: item.y,
                         width: item.width,
@@ -140,11 +154,11 @@ impl Compositor {
             width: 440, height: 300, title: "WINDOW TEST".to_string(),
             rows: vec![Row {
                 text: "RUST COMPOSITOR".to_string(), action: String::new(), kind: b'l',
-                style: 0, x: 0, y: 0, width: 0, height: 0,
+                style: 0, flags: 0, x: 0, y: 0, width: 0, height: 0,
             },
             Row {
                 text: "DRAG TITLE BAR".to_string(), action: String::new(), kind: b'l',
-                style: 0, x: 0, y: 0, width: 0, height: 0,
+                style: 0, flags: 0, x: 0, y: 0, width: 0, height: 0,
             }],
             native: true, maximized: false, minimized: false, restore: None,
         });
@@ -215,7 +229,7 @@ impl Compositor {
                 (kind.as_bytes().first().copied().unwrap_or(b'l'), value)).unwrap_or((b'l', text));
             parsed_rows.push(Row {
                 text: text.to_string(), action: action.to_string(), kind,
-                style: 0, x: 0, y: 0, width: 0, height: 0,
+                style: 0, flags: 0, x: 0, y: 0, width: 0, height: 0,
             });
         }
 
@@ -247,8 +261,31 @@ impl Compositor {
         (true, events)
     }
 
-    pub fn key_scancode(&self, scan: u8, text: Option<u8>) -> Vec<Event> {
-        self.clients.key(scan, text)
+    pub fn key_scancode(&mut self, scan: u8, text: Option<u8>, reverse_focus: bool)
+        -> (Option<String>, Vec<Event>) {
+        // App/client windows own keyboard traversal while they are active.
+        if self.clients.is_active() {
+            return (None, self.clients.key(scan, text));
+        }
+
+        if scan & 0x80 == 0 {
+            // Tab / Shift+Tab moves focus across native managed controls.
+            if scan == 0x0f {
+                self.focus_next(reverse_focus);
+                self.render();
+                return (None, Vec::new());
+            }
+
+            // Enter or Space activates the focused control.
+            if matches!(scan, 0x1c | 0x39) {
+                if let Some(action) = self.focused_action() {
+                    self.render();
+                    return (Some(action), Vec::new());
+                }
+            }
+        }
+
+        (None, self.clients.key(scan, text))
     }
 
     pub fn has_client_windows(&self) -> bool { self.clients.is_active() }
@@ -262,6 +299,19 @@ impl Compositor {
         self.cursor_y = (self.cursor_y - dy).clamp(0, HEIGHT as i32 - 1);
         let left = buttons & 1 != 0;
         let (handled, events) = self.clients.pointer(self.cursor_x, self.cursor_y, left, self.left_down);
+
+        self.hovered_control = if handled {
+            None
+        } else {
+            self.control_at(self.cursor_x, self.cursor_y)
+        };
+
+        if !handled && left && !self.left_down {
+            self.pressed_control = self.hovered_control.clone();
+        } else if !left && self.left_down {
+            self.pressed_control = None;
+        }
+
         let action = if !handled && left && !self.left_down { self.press() } else { None };
         if left && !handled {
             if let Some((ref id, offset_x, offset_y)) = self.drag {
@@ -276,6 +326,81 @@ impl Compositor {
         self.left_down = left;
         self.render();
         (action, events)
+    }
+
+    fn control_at(&self, x: i32, y: i32) -> Option<(String, usize)> {
+        for window in self.windows.iter().rev() {
+            if window.minimized { continue; }
+            let local_x = x - window.x;
+            let local_y = y - window.y;
+            for (index, row) in window.rows.iter().enumerate() {
+                if row.width <= 0 || row.height <= 0
+                    || row.action.is_empty()
+                    || row.flags & CONTROL_FLAG_DISABLED != 0 {
+                    continue;
+                }
+                if local_x >= row.x && local_x < row.x + row.width
+                    && local_y >= row.y && local_y < row.y + row.height {
+                    return Some((window.id.clone(), index));
+                }
+            }
+        }
+        None
+    }
+
+    fn focused_action(&self) -> Option<String> {
+        let (id, index) = self.focused_control.as_ref()?;
+        let window = self.windows.iter().find(|window| !window.minimized && &window.id == id)?;
+        let row = window.rows.get(*index)?;
+        if row.flags & CONTROL_FLAG_DISABLED != 0 || row.flags & CONTROL_FLAG_FOCUSABLE == 0
+            || row.action.is_empty() {
+            return None;
+        }
+        Some(row.action.clone())
+    }
+
+    fn focus_next(&mut self, reverse: bool) {
+        let mut controls: Vec<(String, usize)> = Vec::new();
+        for window in &self.windows {
+            if window.minimized { continue; }
+            for (index, row) in window.rows.iter().enumerate() {
+                if row.width > 0 && row.height > 0
+                    && row.flags & CONTROL_FLAG_FOCUSABLE != 0
+                    && row.flags & CONTROL_FLAG_DISABLED == 0
+                    && !row.action.is_empty() {
+                    controls.push((window.id.clone(), index));
+                }
+            }
+        }
+
+        if controls.is_empty() {
+            self.focused_control = None;
+            return;
+        }
+
+        let current = self.focused_control.as_ref()
+            .and_then(|focused| controls.iter().position(|candidate| candidate == focused));
+
+        let next = if reverse {
+            current.map(|index| if index == 0 { controls.len() - 1 } else { index - 1 })
+                .unwrap_or(controls.len() - 1)
+        } else {
+            current.map(|index| (index + 1) % controls.len()).unwrap_or(0)
+        };
+
+        self.focused_control = Some(controls[next].clone());
+    }
+
+    fn control_state(&self, window_id: &str, index: usize)
+        -> (bool, bool, bool) {
+        let matches = |state: &Option<(String, usize)>| {
+            state.as_ref().is_some_and(|(id, row)| id == window_id && *row == index)
+        };
+        (
+            matches(&self.hovered_control),
+            matches(&self.pressed_control),
+            matches(&self.focused_control),
+        )
     }
 
     fn press(&mut self) -> Option<String> {
@@ -324,7 +449,7 @@ impl Compositor {
             let local_x = self.cursor_x - window.x;
             let local_y = self.cursor_y - window.y;
 
-            // Control Manager v2 supplies real local bounds. Hit testing no
+            // Control Manager supplies real local bounds. Hit testing no
             // longer knows how many dock items exist or where they are placed.
             let laid_out = window.rows.iter().any(|row| row.width > 0 && row.height > 0);
             if laid_out {
@@ -366,7 +491,18 @@ impl Compositor {
             (((self.cursor_y - window.y - row_top) / 42) as usize,
              self.cursor_y >= window.y + row_top)
         };
-        let action = if in_rows { window.rows.get(row).map(|row| row.action.clone()) } else { None };
+        let action = if in_rows {
+            window.rows.get(row).and_then(|control| {
+                if control.flags & CONTROL_FLAG_DISABLED != 0 {
+                    None
+                } else {
+                    if control.flags & CONTROL_FLAG_FOCUSABLE != 0 {
+                        self.focused_control = Some((window.id.clone(), row));
+                    }
+                    Some(control.action.clone())
+                }
+            })
+        } else { None };
         if matches!(window.role, b'W' | b'L') && !window.maximized
             && self.cursor_y < window.y + HEADER_HEIGHT {
             self.drag = Some((window.id.clone(), self.cursor_x - window.x, self.cursor_y - window.y));
@@ -402,43 +538,60 @@ impl Compositor {
 
     fn window(&mut self, window: Window, focused: bool) {
         if window.role == b'P' {
-            // Hideo-inspired taskbar. Control geometry now comes from the C++
-            // Control Manager instead of being hand-placed in the compositor.
+            // Hideo-inspired taskbar. Geometry and focusability come from the
+            // C++ Control Manager; Rust only paints the current interaction state.
             self.fill_rect(window.x, window.y, window.width, window.height, SHELL_DARK);
             self.fill_rect(window.x, window.y + window.height - 1, window.width, 1, SHELL_BORDER);
 
             let managed = window.rows.iter().any(|row| row.width > 0 && row.height > 0);
             if managed {
-                for row in window.rows.iter().take(8) {
+                for (index, row) in window.rows.iter().take(8).enumerate() {
                     if row.width <= 0 || row.height <= 0 { continue; }
 
+                    let (hovered, pressed, control_focused) = self.control_state(&window.id, index);
+                    let disabled = row.flags & CONTROL_FLAG_DISABLED != 0;
                     let x = window.x + row.x;
                     let y = window.y + row.y;
-                    let fill = match row.style {
+
+                    let base = match row.style {
                         CONTROL_STYLE_ACCENT => CHROME_ACCENT,
                         _ => SHELL_SURFACE,
                     };
+                    let fill = if disabled {
+                        SHELL_DISABLED
+                    } else if pressed {
+                        SHELL_SURFACE_PRESSED
+                    } else if hovered {
+                        SHELL_SURFACE_HOVER
+                    } else {
+                        base
+                    };
+                    let border = if control_focused { CHROME_ACCENT } else { SHELL_BORDER };
+                    let text_color = if disabled { 0x006f7983 } else { SHELL_TEXT };
 
-                    self.rounded_rect(x, y, row.width, row.height, fill, SHELL_BORDER);
+                    self.rounded_rect(x, y, row.width, row.height, fill, border);
 
                     match row.style {
                         CONTROL_STYLE_SEARCH => {
-                            self.fill_rect(x + 16, y + 11, 10, 10, CHROME_ACCENT);
-                            self.text(x + 36, y + 10, &row.text, 1, SHELL_TEXT);
+                            self.fill_rect(x + 16, y + 11, 10, 10,
+                                if disabled { 0x006f7983 } else { CHROME_ACCENT });
+                            self.text(x + 36, y + 10, &row.text, 1, text_color);
                         }
                         CONTROL_STYLE_STATUS => {
-                            self.fill_rect(x + 16, y + 11, 10, 8, 0x005bc0eb);
-                            self.fill_rect(x + 34, y + 9, 6, 12, 0x00d5dae0);
-                            self.fill_rect(x + 48, y + 10, 16, 10, 0x0089d185);
-                            self.text(x + 76, y + 10, &row.text, 1, SHELL_MUTED);
+                            let icon = if disabled { 0x006f7983 } else { 0x00d5dae0 };
+                            self.fill_rect(x + 16, y + 11, 10, 8, icon);
+                            self.fill_rect(x + 34, y + 9, 6, 12, icon);
+                            self.fill_rect(x + 48, y + 10, 16, 10, icon);
+                            self.text(x + 76, y + 10, &row.text, 1,
+                                      if disabled { 0x006f7983 } else { SHELL_MUTED });
                         }
                         CONTROL_STYLE_SUBTLE => {
                             let text_width = row.text.len() as i32 * 6;
                             self.text(x + (row.width - text_width) / 2, y + 10,
-                                      &row.text, 1, SHELL_TEXT);
+                                      &row.text, 1, text_color);
                         }
                         _ => {
-                            self.text(x + 16, y + 10, &row.text, 1, SHELL_TEXT);
+                            self.text(x + 16, y + 10, &row.text, 1, text_color);
                         }
                     }
                 }
@@ -462,8 +615,6 @@ impl Compositor {
         }
 
         if window.role == b'D' {
-            // Floating launcher dock. The stepped rounded rectangles are the
-            // bootstrap rasterizer's approximation of Hideo's soft radii.
             self.rounded_rect(window.x + 5, window.y + 7, window.width, window.height,
                               0x0010151a, 0x0010151a);
             self.rounded_rect(window.x, window.y, window.width, window.height,
@@ -476,29 +627,42 @@ impl Compositor {
                 let tile_w = if managed { row.width } else { 104 };
                 let tile_h = if managed { row.height } else { 52 };
 
-                // style=2 is the Control Manager's TILE style. Unknown styles
-                // deliberately fall back to the same restrained shell surface.
-                let tile_fill = match row.style {
+                let (hovered, pressed, control_focused) = self.control_state(&window.id, index);
+                let disabled = row.flags & CONTROL_FLAG_DISABLED != 0;
+                let base = match row.style {
                     CONTROL_STYLE_ACCENT => CHROME_ACCENT,
                     _ => SHELL_SURFACE,
                 };
-                self.rounded_rect(tile_x, tile_y, tile_w, tile_h, tile_fill, SHELL_BORDER);
+                let tile_fill = if disabled {
+                    SHELL_DISABLED
+                } else if pressed {
+                    SHELL_SURFACE_PRESSED
+                } else if hovered {
+                    SHELL_SURFACE_HOVER
+                } else {
+                    base
+                };
+                let tile_border = if control_focused { CHROME_ACCENT } else { SHELL_BORDER };
+                self.rounded_rect(tile_x, tile_y, tile_w, tile_h, tile_fill, tile_border);
 
-                // Bootstrap icon placeholder. Icon resources will become their
-                // own manager; the Control Manager only owns control geometry.
                 let icon_x = tile_x + 10;
                 let icon_y = tile_y + ((tile_h - 30) / 2).max(0);
-                let icon_color = match index {
-                    0 => 0x004f8fdc,
-                    1 => 0x0057a773,
-                    _ => 0x00886bd8,
+                let icon_color = if disabled {
+                    0x00525b64
+                } else {
+                    match index {
+                        0 => 0x004f8fdc,
+                        1 => 0x0057a773,
+                        _ => 0x00886bd8,
+                    }
                 };
                 self.rounded_rect(icon_x, icon_y, 30, 30, icon_color, icon_color);
                 let glyph = match index { 0 => "A", 1 => "F", _ => "S" };
-                self.text(icon_x + 9, icon_y + 9, glyph, 1, 0x00ffffff);
+                self.text(icon_x + 9, icon_y + 9, glyph, 1,
+                          if disabled { 0x00929aa2 } else { 0x00ffffff });
 
                 self.text(tile_x + 49, tile_y + ((tile_h - 7) / 2).max(0),
-                          &row.text, 1, SHELL_TEXT);
+                          &row.text, 1, if disabled { 0x00717a83 } else { SHELL_TEXT });
             }
             return;
         }

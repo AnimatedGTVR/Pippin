@@ -9,7 +9,7 @@ extern "C" {
 #endif
 
 enum {
-    PIPPIN_SHELL_ABI_VERSION = 2,
+    PIPPIN_SHELL_ABI_VERSION = 3,
     PIPPIN_SHELL_ROLE_PANEL = 'P',
     PIPPIN_SHELL_ROLE_DOCK = 'D',
     PIPPIN_SHELL_ROLE_LAUNCHER = 'L',
@@ -22,6 +22,9 @@ enum {
     PIPPIN_CONTROL_STYLE_ACCENT = 3,
     PIPPIN_CONTROL_STYLE_SEARCH = 4,
     PIPPIN_CONTROL_STYLE_STATUS = 5,
+
+    PIPPIN_CONTROL_FLAG_FOCUSABLE = 1u << 0,
+    PIPPIN_CONTROL_FLAG_DISABLED = 1u << 1,
 };
 
 typedef struct pippin_shell_item {
@@ -29,6 +32,7 @@ typedef struct pippin_shell_item {
     const char* action;
     uint8_t kind;
     uint8_t style;
+    uint8_t flags;
     int32_t x;
     int32_t y;
     int32_t width;
