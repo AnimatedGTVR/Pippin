@@ -40,6 +40,8 @@ const CONTROL_FLAG_DISABLED: u8 = 1 << 1;
 const HEADER_HEIGHT: i32 = 44;
 const SCROLL_LINE: i32 = 32;
 const CONTENT_BOTTOM_PADDING: i32 = 20;
+const TEXT_INPUT_LIMIT: usize = 64;
+const ACTION_VALUE_SEPARATOR: char = '\u{001f}';
 
 #[derive(Clone)]
 struct Row {
@@ -52,6 +54,14 @@ struct Row {
     y: i32,
     width: i32,
     height: i32,
+}
+
+#[derive(Clone)]
+struct EditState {
+    window_id: String,
+    row: usize,
+    value: String,
+    cursor: usize,
 }
 
 #[derive(Clone, Copy)]
@@ -114,6 +124,7 @@ pub struct Compositor {
     hovered_control: Option<(String, usize)>,
     pressed_control: Option<(String, usize)>,
     focused_control: Option<(String, usize)>,
+    edits: Vec<EditState>,
     focus_scope: FocusScope,
     drag: Option<(String, i32, i32)>, // window ID and pointer offset
 }
@@ -129,6 +140,7 @@ impl Compositor {
             hovered_control: None,
             pressed_control: None,
             focused_control: None,
+            edits: Vec::new(),
             focus_scope: FocusScope::Desktop,
             drag: None,
         };
