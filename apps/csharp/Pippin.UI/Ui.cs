@@ -18,6 +18,8 @@ public sealed record UiNode(
     public static UiNode Heading(string text) => new("heading", text);
     public static UiNode Separator() => new("separator");
     public static UiNode Toggle(string text, string action) => new("toggle", text, action);
+    public static UiNode Search(string placeholder, string action) => new("search", placeholder, action);
+    public static UiNode Card(params UiNode[] children) => new("card", Children: children);
     public static UiNode Column(params UiNode[] children) => new("column", Children: children);
     public static UiNode Row(params UiNode[] children) => new("row", Children: children);
 }
