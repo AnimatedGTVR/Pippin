@@ -116,10 +116,6 @@ if $disk; then
                 -device ide-hd,drive=disk,bus=ahci.0 )
 fi
 
-if $shell || $window_server; then
-        qemu-system-x86_64 "${args[@]}" \
-                > >(sed -u 's/^/[guest] /' | tee -a "$RUNTIME_LOG") \
-                2> >(sed -u 's/^/[qemu] /' | tee -a "$RUNTIME_LOG" >&2)
-else
-        exec qemu-system-x86_64 "${args[@]}"
-fi
+qemu-system-x86_64 "${args[@]}" \
+        > >(sed -u 's/^/[guest] /' | tee -a "$RUNTIME_LOG") \
+        2> >(sed -u 's/^/[qemu] /' | tee -a "$RUNTIME_LOG" >&2)

@@ -2,7 +2,7 @@
 
 A retro-styled, Macintosh-inspired desktop operating system. Single-user, GUI-first,
 built with a mix of **Assembly**, **Rust**, **C++** and **C** in the kernel, **C++**
-drivers, a **Rust** compositor and **C#** desktop shell, and
+drivers, a **Rust** compositor and **C++** desktop shell, with a small **C** ABI layer, and
 **shell scripts** for build and boot glue.
 
 These are the current choices, not a limit on Pippin's languages. Other
@@ -23,7 +23,7 @@ languages can join when a subsystem or application benefits from them.
 | `kernel/c/`                      | C glue: libc-style stubs used by C++ and Rust        |
 | `drivers/cpp/`                   | C++ driver layer (PCI stub today)                    |
 | `boot/`                          | Limine bootloader config                              |
-| `apps/`                          | C# shell model and future native applications         |
+| `apps/`                          | Native apps plus the archived C# shell prototype      |
 | `scripts/`                       | Shell glue for QEMU / ISO workflows                  |
 
 ## Build
@@ -37,7 +37,7 @@ make specs          # inspect host specs and calculate safe Pippin limits
 make                # preflight + configure + build build/kernel.elf
 make run            # boot full desktop using QEMU's normal frontend
 make run-shell      # alias for make run
-make run-ui         # two independent C# apps using the new window API
+make run-ui         # alias for the native desktop run path
 make run-headless   # serial console only
 make run-disk       # QEMU window with the FAT32 Hello bundle disk
 make run-gdb        # normal QEMU frontend + GDB stub on :1234
@@ -53,8 +53,7 @@ stays below Pippin's current 1 GiB early direct-map limit. Run `make specs` to
 print the calculation without booting Pippin.
 
 While a graphical desktop session is running, the launching terminal becomes
-the diagnostic console. Guest serial output is tagged `[guest]`, C# shell
-messages are tagged `[shell]`, QEMU stderr is tagged `[qemu]`, and QEMU
+the diagnostic console. Guest serial output is tagged `[guest]`, QEMU stderr is tagged `[qemu]`, and QEMU
 guest-error diagnostics are tagged `[qemu-debug]`. The same output is saved in
 `build/logs/runtime.log`, with dedicated `shell.log` and `qemu-debug.log`
 files for post-crash inspection.
@@ -68,16 +67,12 @@ require a USB/virtio tablet input driver in Pippin.
 
 See [docs/build.md](docs/build.md) for the full toolchain and ISO setup.
 
-After `make run`, the host .NET shell connects over QEMU's second serial port
-and Pippin enters the full graphical desktop automatically. The panel, dock,
-notifications, and Terminal are created at startup; **Alt+T** brings Terminal
-to the front. `make run-shell` is kept as an alias for this same full-desktop
+After `make run`, Pippin enters the graphical desktop directly from the guest.
+The shell model is compiled into the kernel-side C++ runtime and exported through
+a small C ABI to the Rust compositor. No host .NET process is required.
+`make run-shell` and `make run-ui` are aliases for this same native desktop
 boot path. Use `make run-headless` for the kernel/serial-only workflow and
 `make run-disk` to make `hello.pipb` available to `ls` and `cat`.
-`make run-ui` starts a window broker and two separate C# processes. About and
-Task Manager each paint a private surface through the reusable window API;
-both appear in QEMU. See [docs/windowing.md](docs/windowing.md) for the API and
-the remaining guest-runtime boundary.
 
 ## Design in one paragraph
 
@@ -85,10 +80,7 @@ Pippin is organized like the classic Macintosh Toolbox: a collection of cooperat
 "Managers" (Memory, Processor, Event, File, Driver, Display, Window, Menu, Control,
 Resource) wrapped around a small preemptive kernel core. Assembly owns boot and the CPU
 trampolines, Rust owns the safety-critical core (memory, interrupts, scheduling, IPC),
-C++ owns subsystems and drivers, C provides ABI-shim glue, Rust owns the
-compositor and window management, and C# defines the panel, dock, launcher,
-settings, files, notifications, wallpaper and app windows. The C# projects
-build on the host; guest execution still needs a managed runtime and IPC. The full
+C++ owns subsystems, drivers, and the desktop shell model; C provides the stable ABI shim between C++ and Rust; Rust owns the compositor, window management, input, and safety-critical core. The old C# shell remains only as a design prototype and is no longer part of the default boot path. The full
 picture lives in [docs/architecture.md](docs/architecture.md). Shell scripts
 connect build, image, and emulator steps on the development host.
 
@@ -100,9 +92,9 @@ connect build, image, and emulator steps on the development host.
   IPC event ports, owned zones and handles.
 - **M3 — Drivers (core complete):** ACPI/PCI discovery, PS/2 events, Limine
   framebuffer, AHCI reads, FAT32 Hello bundle loading.
-- **M4 — GUI:** Rust compositor/window manager and C# desktop shell.
-- **M4.5 — C# bridge:** interactive host C# shell surfaces displayed in QEMU.
+- **M4 — GUI:** Rust compositor/window manager with a native C++ desktop shell.
+- **M4.5 — Native shell ABI:** C++ shell surfaces exported through a small C ABI to Rust.
 - **Window API foundation:** separate clients, owned surfaces and input events.
 - **M5 — Apps:** C++ and Rust applications using the Toolbox API.
-- **M6 — Runtime expansion:** managed app packaging and services on x86-64.
+- **M6 — Runtime expansion:** native executable loading, packaging, and services on x86-64.
 - **M7 — 68k:** Motorola 68000 feasibility port.

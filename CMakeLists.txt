@@ -10,7 +10,7 @@
 #
 # The driver layer stays in this build until app-land exists; turn on
 # PIPPIN_BUILD_APPS at Milestone 5 to add native C++ and Rust applications.
-# C# shell projects build separately with the host .NET SDK until guest runtime support exists.
+# The native desktop shell model is C++ and crosses into Rust through a small C ABI.
 
 cmake_minimum_required(VERSION 3.20)
 project(Pippin VERSION 0.1.0 LANGUAGES ASM C CXX)

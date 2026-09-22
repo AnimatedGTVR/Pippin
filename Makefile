@@ -16,15 +16,11 @@ kernel: preflight
 	bash -c 'source "$(BUILD_DIR)/pippin-limits.env"; cmake --build "$(BUILD_DIR)" --target kernel.elf -j"$$PIPPIN_BUILD_JOBS"'
 
 run: kernel
-	dotnet build apps/csharp/Pippin.Shell/Pippin.Shell.csproj
-	./scripts/run-qemu.sh $(QEMU_MODE) --shell
+	./scripts/run-qemu.sh $(QEMU_MODE)
 
 run-shell: run
 
-run-ui: kernel
-	dotnet build apps/csharp/Pippin.Broker/Pippin.Broker.csproj
-	dotnet build apps/csharp/Pippin.Examples/Pippin.Examples.csproj
-	PIPPIN_QEMU_MODE="$(QEMU_MODE)" ./scripts/run-ui.sh
+run-ui: run
 
 run-headless: kernel
 	./scripts/run-qemu.sh --headless

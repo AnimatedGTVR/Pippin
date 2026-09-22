@@ -4,6 +4,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use alloc::string::{String, ToString};
 use crate::window_server::{Event, WindowServer};
+use crate::ffi;
 
 pub const WIDTH: usize = 1024;
 pub const HEIGHT: usize = 768;
@@ -68,48 +69,45 @@ impl Compositor {
             left_down: false, drag: None,
         };
 
-        // Native shell fallbacks are always visible, even when the host C#
-        // process or COM2 bridge is unavailable. The managed shell reuses the
-        // same IDs, so it can replace the content without creating duplicates.
-        // Layout is inspired by Hideo's restrained shell hierarchy: a dark
-        // top taskbar with pill groups and a compact floating launcher dock.
-        compositor.windows.push(Window {
-            id: "panel".to_string(),
-            role: b'P',
-            x: 0,
-            y: 0,
-            width: WIDTH as i32,
-            height: 48,
-            title: "Panel".to_string(),
-            rows: vec![
-                Row { text: "Search".to_string(), action: "launcher.open".to_string(), kind: b'b' },
-                Row { text: "Pippin".to_string(), action: String::new(), kind: b'l' },
-                Row { text: "WiFi  Vol  Bat".to_string(), action: "settings.open".to_string(), kind: b'b' },
-            ],
-            native: false,
-            maximized: false,
-            minimized: false,
-            restore: None,
-        });
+        // The visible shell model now comes from C++ through the tiny C ABI.
+        // Rust remains responsible for validation, ownership and rendering.
+        if ffi::shell_abi_version() == 1 {
+            for index in 0..ffi::shell_surface_count().min(MAX_WINDOWS) {
+                let Some(surface) = ffi::shell_surface(index) else { continue; };
+                if !matches!(surface.role, b'P' | b'D' | b'L' | b'N' | b'W') {
+                    continue;
+                }
+                if surface.width < 40 || surface.height < 30
+                    || surface.width > WIDTH as i32 || surface.height > HEIGHT as i32 {
+                    continue;
+                }
 
-        compositor.windows.push(Window {
-            id: "dock".to_string(),
-            role: b'D',
-            x: 328,
-            y: 688,
-            width: 368,
-            height: 68,
-            title: "Dock".to_string(),
-            rows: vec![
-                Row { text: "Apps".to_string(), action: "launcher.open".to_string(), kind: b'b' },
-                Row { text: "Files".to_string(), action: "files.open".to_string(), kind: b'b' },
-                Row { text: "Settings".to_string(), action: "settings.open".to_string(), kind: b'b' },
-            ],
-            native: false,
-            maximized: false,
-            minimized: false,
-            restore: None,
-        });
+                let mut rows = Vec::new();
+                for raw in surface.items.iter().take(8) {
+                    let item = ffi::shell_item(raw);
+                    rows.push(Row {
+                        text: item.text.to_string(),
+                        action: item.action.to_string(),
+                        kind: item.kind,
+                    });
+                }
+
+                compositor.windows.push(Window {
+                    id: surface.id.to_string(),
+                    role: surface.role,
+                    x: surface.x,
+                    y: surface.y,
+                    width: surface.width,
+                    height: surface.height,
+                    title: surface.title.to_string(),
+                    rows,
+                    native: false,
+                    maximized: false,
+                    minimized: !surface.visible,
+                    restore: None,
+                });
+            }
+        }
 
         compositor.render();
         compositor
@@ -141,6 +139,13 @@ impl Compositor {
                 let mut window = self.windows.remove(index);
                 window.minimized = false;
                 self.windows.push(window);
+                self.render();
+            }
+            return true;
+        }
+        if let Some(id) = line.strip_prefix("M|") {
+            if let Some(index) = self.windows.iter().position(|window| window.id == id) {
+                self.windows[index].minimized = true;
                 self.render();
             }
             return true;
@@ -256,7 +261,17 @@ impl Compositor {
         if matches!(window.role, b'W' | b'L') && self.cursor_y >= window.y + 14 && self.cursor_y < window.y + 32 {
             let control = self.cursor_x - (window.x + 15);
             if (0..18).contains(&control) {
-                return if window.native { None } else { Some(alloc::format!("{}.close", window.id)) };
+                if window.native {
+                    // Native compositor test windows really close.
+                    return None;
+                }
+                let action = alloc::format!("{}.close", window.id);
+                // Built-in C++ shell surfaces stay resident so they can be
+                // restored later without a host process recreating them.
+                window.minimized = true;
+                self.windows.push(window);
+                self.render();
+                return Some(action);
             }
             if (29..47).contains(&control) {
                 window.minimized = true;
