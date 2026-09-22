@@ -85,7 +85,8 @@ public sealed class TerminalApp : Application
 {
     public override string Id => "org.pippin.terminal";
     public string Command { get; set; } = "";
-    public string Output { get; set; } = "Pippin OS 0.1.0\\nType help, uname, clear, echo, or exit.";
+    public string Output { get; set; } = "Pippin OS 0.1.0 - type help for commands.";
+    public const int MaxCommandLength = 64;
     public override IEnumerable<Surface> CreateSurfaces() =>
         [new("terminal", SurfaceRole.AppWindow, "Terminal", 190, 130, 640, 420,
             UiNode.Column(UiNode.Heading("Pippin Terminal"),
@@ -187,7 +188,8 @@ internal sealed class HostBridge(string socketPath, Application[] clients)
             && byte.TryParse(action.AsSpan("terminal.key.".Length),
                 System.Globalization.NumberStyles.HexNumber, null, out var key))
         {
-            terminal.Command += (char)key;
+            if (terminal.Command.Length < TerminalApp.MaxCommandLength)
+                terminal.Command += (char)key;
             await ShowAsync("terminal");
             return;
         }
@@ -287,6 +289,8 @@ internal sealed class HostBridge(string socketPath, Application[] clients)
         {
             var reply = await incoming.Reader.ReadAsync();
             if (reply == "A") break;
+            if (reply == "N")
+                throw new InvalidOperationException("Pippin rejected shell command: " + line);
             if (reply.StartsWith("E|", StringComparison.Ordinal)) pendingActions.Add(reply[2..]);
         }
         foreach (var action in pendingActions) await HandleAsync(action);
