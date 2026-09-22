@@ -62,15 +62,25 @@ pub struct Shell {
 }
 
 impl Shell {
-    pub fn new(terminal: Terminal, bundle: Option<file::Bundle<'static>>) -> Self {
+    pub fn new(mut terminal: Terminal, bundle: Option<file::Bundle<'static>>) -> Self {
+        // The native C++ shell is now the default boot experience. The text
+        // command shell remains available with Esc / the `console` command.
+        let desktop = desktop::Desktop::open();
+        let desktop_ready = desktop.is_some();
+        if desktop_ready { terminal.set_screen_enabled(false); }
+
         let mut shell = Self {
             terminal, line: [0; LINE_CAPACITY], len: 0,
             shift: false, alt: false, terminal_capture: false, caps: false, extended: false, last_was_cr: false,
-            bundle, desktop: None, bridge: bridge::Bridge::new(),
+            bundle, desktop, bridge: bridge::Bridge::new(),
         };
-        let _ = writeln!(shell.terminal, "Pippin command shell (M4 preview)");
-        let _ = writeln!(shell.terminal, "Type 'help' for commands.\n");
-        shell.prompt();
+        let _ = writeln!(shell.terminal, "Pippin command shell (native C++ desktop)");
+        if desktop_ready {
+            let _ = writeln!(shell.terminal, "Native desktop shell active; press Esc for console.");
+        } else {
+            let _ = writeln!(shell.terminal, "Desktop unavailable. Type 'help' for commands.\n");
+            shell.prompt();
+        }
         shell
     }
 
@@ -121,8 +131,7 @@ impl Shell {
             if scan == 0x38 { self.alt = true; self.extended = false; return; }
             if scan == 0xb8 { self.alt = false; self.extended = false; return; }
             if self.alt && scan == 0x14 {
-                self.bridge.action("terminal.open");
-                self.terminal_capture = true;
+                self.handle_desktop_action("terminal.open");
                 self.extended = false;
                 return;
             }
@@ -191,9 +200,39 @@ impl Shell {
     pub fn mouse_packet(&mut self, packet: u32) {
         if let Some(desktop) = &mut self.desktop {
             let (action, events) = desktop.pointer_packet(packet);
-            if let Some(action) = action { self.bridge.action(&action); }
+            if let Some(action) = action { self.handle_desktop_action(&action); }
             for event in events { self.bridge.event(event); }
         }
+    }
+
+    fn handle_desktop_action(&mut self, action: &str) {
+        let command = if let Some(id) = action.strip_suffix(".open")
+            .or_else(|| action.strip_suffix(".restore")) {
+            if matches!(id, "launcher" | "files" | "settings" | "terminal") {
+                Some(alloc::format!("R|{}", id))
+            } else {
+                None
+            }
+        } else if let Some(id) = action.strip_suffix(".close") {
+            if matches!(id, "launcher" | "files" | "settings" | "terminal") {
+                Some(alloc::format!("M|{}", id))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        if let Some(command) = command {
+            if let Some(desktop) = &mut self.desktop {
+                let _ = desktop.command(&command);
+                return;
+            }
+        }
+
+        // Keep the bridge for future external/native client experiments, but
+        // the built-in desktop no longer depends on a host-side C# process.
+        self.bridge.action(action);
     }
 
     fn input(&mut self, byte: u8) {
