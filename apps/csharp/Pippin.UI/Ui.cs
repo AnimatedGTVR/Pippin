@@ -15,6 +15,9 @@ public sealed record UiNode(
 {
     public static UiNode Label(string text) => new("label", text);
     public static UiNode Button(string text, string action) => new("button", text, action);
+    public static UiNode Heading(string text) => new("heading", text);
+    public static UiNode Separator() => new("separator");
+    public static UiNode Toggle(string text, string action) => new("toggle", text, action);
     public static UiNode Column(params UiNode[] children) => new("column", Children: children);
     public static UiNode Row(params UiNode[] children) => new("row", Children: children);
 }

@@ -13,23 +13,23 @@ public sealed class Wallpaper : Application
     public override string Id => "org.pippin.wallpaper";
     public override IEnumerable<Surface> CreateSurfaces() =>
         [new("wallpaper", SurfaceRole.Wallpaper, "Wallpaper", 0, 0, 800, 600,
-            Background: "#142b42")];
+            Background: "#263746")];
 }
 
 public sealed class Panel : Application
 {
     public override string Id => "org.pippin.panel";
     public override IEnumerable<Surface> CreateSurfaces() =>
-        [new("panel", SurfaceRole.Panel, "Panel", 0, 0, 800, 36,
+        [new("panel", SurfaceRole.Panel, "Panel", 10, 10, 780, 40,
             UiNode.Row(UiNode.Button("Pippin", "launcher.open"),
-                UiNode.Label("Desktop"), UiNode.Button("Settings", "settings.open")))];
+                UiNode.Label("Pippin Desktop"), UiNode.Button("Settings", "settings.open")))];
 }
 
 public sealed class Dock : Application
 {
     public override string Id => "org.pippin.dock";
     public override IEnumerable<Surface> CreateSurfaces() =>
-        [new("dock", SurfaceRole.Dock, "Dock", 184, 540, 432, 52,
+        [new("dock", SurfaceRole.Dock, "Dock", 202, 536, 396, 54,
             UiNode.Row(UiNode.Button("Files", "files.open"),
                 UiNode.Button("Settings", "settings.open"),
                 UiNode.Button("Launcher", "launcher.open")))];
@@ -39,8 +39,8 @@ public sealed class Launcher : Application
 {
     public override string Id => "org.pippin.launcher";
     public override IEnumerable<Surface> CreateSurfaces() =>
-        [new("launcher", SurfaceRole.Launcher, "Launcher", 28, 48, 310, 380,
-            UiNode.Column(UiNode.Label("Applications"),
+        [new("launcher", SurfaceRole.Launcher, "Applications", 24, 62, 324, 390,
+            UiNode.Column(UiNode.Heading("Applications"), UiNode.Separator(),
                 UiNode.Button("Files", "files.open"),
                 UiNode.Button("Settings", "settings.open")))];
 }
@@ -50,8 +50,9 @@ public sealed class Settings : Application
     public override string Id => "org.pippin.settings";
     public override IEnumerable<Surface> CreateSurfaces() =>
         [new("settings", SurfaceRole.AppWindow, "Settings", 160, 96, 480, 360,
-            UiNode.Column(UiNode.Label("Appearance"),
-                UiNode.Button("Pippin gradient", "wallpaper.select.gradient")))];
+            UiNode.Column(UiNode.Heading("Appearance"), UiNode.Separator(),
+                UiNode.Button("Change wallpaper", "wallpaper.select.gradient"),
+                UiNode.Toggle("Animations", "settings.animations.toggle")))];
 }
 
 public sealed class Files : Application
@@ -59,7 +60,10 @@ public sealed class Files : Application
     public override string Id => "org.pippin.files";
     public override IEnumerable<Surface> CreateSurfaces() =>
         [new("files", SurfaceRole.AppWindow, "Files", 112, 80, 540, 400,
-            UiNode.Column(UiNode.Label("Home"), UiNode.Label("Files will appear here")))];
+            UiNode.Column(UiNode.Heading("Home"), UiNode.Separator(),
+                UiNode.Button("Documents", "files.documents.open"),
+                UiNode.Button("Downloads", "files.downloads.open"),
+                UiNode.Label("Pippin Files")))];
 }
 
 public sealed class Notifications : Application
@@ -156,7 +160,7 @@ internal sealed class HostBridge(string socketPath, Application[] clients)
             case "wallpaper.select.gradient":
                 alternateWallpaper = !alternateWallpaper;
                 await SendAsync("S|wallpaper|B|0|0|800|600|" +
-                    (alternateWallpaper ? "#394056" : "#142b42") + "|");
+                    (alternateWallpaper ? "#4b4f63" : "#263746") + "|");
                 break;
         }
     }
@@ -196,7 +200,7 @@ internal sealed class HostBridge(string socketPath, Application[] clients)
     private static IEnumerable<UiNode> Flatten(UiNode? node)
     {
         if (node is null) yield break;
-        if (node.Kind is "label" or "button") yield return node;
+        if (node.Kind is "label" or "heading" or "button" or "toggle") yield return node;
         if (node.Children is not null)
             foreach (var child in node.Children)
                 foreach (var item in Flatten(child)) yield return item;
