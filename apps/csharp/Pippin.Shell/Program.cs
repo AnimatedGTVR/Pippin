@@ -81,11 +81,14 @@ public sealed class Files : Application
 public sealed class TerminalApp : Application
 {
     public override string Id => "org.pippin.terminal";
+    public string Command { get; set; } = "";
+    public string Output { get; set; } = "Pippin OS 0.1.0\\nType help, uname, clear, echo, or exit.";
     public override IEnumerable<Surface> CreateSurfaces() =>
         [new("terminal", SurfaceRole.AppWindow, "Terminal", 190, 130, 640, 420,
             UiNode.Column(UiNode.Heading("Pippin Terminal"),
-                UiNode.Label("pippin> ready"),
-                UiNode.Label("Alt+T opens this terminal")))];
+                UiNode.Label(Output),
+                UiNode.Search("pippin> " + Command, "terminal.input"),
+                UiNode.Button("Run", "terminal.run")))];
 }
 
 public sealed class Notifications : Application
@@ -182,6 +185,8 @@ internal sealed class HostBridge(string socketPath, Application[] clients)
             case "settings.open": await ShowAsync("settings"); break;
             case "files.open": await ShowAsync("files"); break;
             case "terminal.open": await ShowAsync("terminal"); break;
+            case "terminal.run": await RunTerminalAsync(); break;
+            case "terminal.input": await ShowStatusAsync("Terminal input field focused"); break;
             case "launcher.restore": await RestoreOrShowAsync("launcher"); break;
             case "settings.restore": await RestoreOrShowAsync("settings"); break;
             case "files.restore": await RestoreOrShowAsync("files"); break;
@@ -206,6 +211,24 @@ internal sealed class HostBridge(string socketPath, Application[] clients)
                 await ShowStatusAsync("Blue wallpaper applied");
                 break;
         }
+    }
+
+    private async Task RunTerminalAsync()
+    {
+        var terminal = clients.OfType<TerminalApp>().Single();
+        var command = terminal.Command.Trim();
+        terminal.Output = command switch
+        {
+            "" => terminal.Output,
+            "help" => "help  uname  clear  echo <text>  exit",
+            "uname" => "Pippin OS 0.1.0 x86_64",
+            "clear" => "",
+            "exit" => "Use the window close button to exit Terminal.",
+            _ when command.StartsWith("echo ", StringComparison.Ordinal) => command[5..],
+            _ => command + ": command not found"
+        };
+        terminal.Command = "";
+        await ShowAsync("terminal");
     }
 
     private async Task ShowStatusAsync(string message)
