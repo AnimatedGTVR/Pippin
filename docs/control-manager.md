@@ -14,10 +14,10 @@ The design is informed by Skift's Karm UI layer, especially these ideas:
 - control-local input bounds rather than shell-specific hit-test constants
 - style metadata carried with the control instead of inferred from its label
 
-Karm goes much further than Pippin currently does. Karm's UI layer also has
-reconciliation, reactive rebuilds, focus, drag/drop, animation, text editing,
-scrolling, popovers, dialogs, and richer paint primitives. Pippin does not claim
-those features yet.
+Karm goes much further than Pippin currently does. Pippin now has basic focus,
+text editing, scrolling, retained composition, and clipped painting, but Karm
+still goes far beyond it with reconciliation, reactive rebuilds, drag/drop,
+animation, rich text editing, popovers, dialogs, and broader paint primitives.
 
 ## Current API
 
@@ -351,6 +351,62 @@ giving the scrolling path a real built-in surface to exercise.
 The native shell import limit was raised from 8 to 16 controls so larger retained
 trees are not truncated at the C++/Rust boundary.
 
+## Editable text controls
+
+The Control Manager now distinguishes two editable semantic controls:
+
+- `ui::searchBox()` — editable search/query field with placeholder text
+- `ui::textField()` — editable command/text field with a persistent prefix
+
+Both still flatten to ordinary ABI v3 leaf controls. Their live value and caret
+are compositor-side runtime state keyed by window ID + row index, so no ABI bump
+was required.
+
+Current editor behavior:
+
+- printable ASCII insertion
+- 64-character input limit
+- Backspace
+- Delete
+- Left / Right caret movement
+- Home / End caret movement while editing
+- click-to-place caret
+- horizontally follows the caret for long input
+- live caret rendering
+- Tab can focus editable controls just like buttons
+
+Space is inserted when a text field has focus instead of triggering generic
+button activation. Up/Down and PageUp/PageDown still scroll the active window
+unless an editable control specifically consumes that key.
+
+Enter submits through the existing native action path using an internal
+non-printable separator between action name and value. Printable user input
+cannot contain that separator. The CLI removes that wrapper before dispatch, so
+it never leaks into the legacy COM2 line protocol.
+
+Search fields retain their query after Enter. Command-style `textField`
+controls clear after submission.
+
+### Terminal
+
+Terminal has been migrated from a flat Flow to a retained node tree and now uses
+`ui::textField("pippin> ", "terminal.input")`.
+
+The `pippin> ` prefix remains visible while the editable value is drawn after
+it. Enter routes the submitted text into Pippin's existing shell command parser
+and clears the field.
+
+Command output still belongs to the bootstrap/serial shell today; a native
+Terminal output/history model is the next layer rather than being faked inside
+the text field itself.
+
+### Search
+
+Launcher and Files already used `ui::searchBox()`, so they become editable
+without changing their C++ layout trees. Their current query is kept locally and
+Enter produces a search submission hook. Actual result filtering is intentionally
+left for the consumer layer instead of being hardcoded into the compositor.
+
 ## Why this boundary
 
 For now:
@@ -366,9 +422,9 @@ the C++ shell moves fully into ring-3 ELF processes.
 
 The Control Manager should stay focused:
 
-1. add draggable scrollbar thumbs and optional inertial/smooth scrolling
-2. add per-control editable/search state instead of static text placeholders
-3. add runtime relayout so maximized/resized windows can recompute their trees
-4. migrate Terminal to retained nodes and editable text input
+1. add live Launcher/Files filtering consumers for search queries
+2. add native Terminal output/history instead of serial-only command output
+3. add draggable scrollbar thumbs and optional inertial/smooth scrolling
+4. add runtime relayout so maximized/resized windows can recompute their trees
 5. once user apps can own surfaces directly, move this same C++ manager into the
    native app/toolkit layer

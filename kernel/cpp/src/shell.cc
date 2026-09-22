@@ -264,24 +264,32 @@ constexpr pippin_shell_item kSettingsItems[] = {
     shellItem(kSettingsControls[10]),
 };
 
-constexpr ui::ControlSpec kTerminalSpecs[] = {
-    ui::heading("Pippin Terminal"),
-    ui::label("Native C++ shell online."),
-    ui::searchBox("pippin> ", "terminal.input"),
+constexpr ui::Node kTerminalNodes[] = {
+    ui::leaf(ui::heading("Pippin Terminal")),
+    ui::leaf(ui::label("Native C++ shell online.")),
+    ui::leaf(ui::textField("pippin> ", "terminal.input")),
 };
 
-constexpr auto kTerminalControls = ui::flow(
-    windowContent(640, 420),
-    kTerminalSpecs
+constexpr ui::Node kTerminalColumn =
+    ui::group(ui::Axis::VERTICAL, kTerminalNodes, 10);
+
+constexpr ui::Node kTerminalTree =
+    ui::proxy(kTerminalColumn, ui::Insets{20, 24, 20, 24});
+
+constexpr auto kTerminalControls = ui::layoutTree<3>(
+    kTerminalTree,
+    ui::Rect{0, 44, 640, 376}
 );
+
+static_assert(kTerminalControls.valid());
+static_assert(kTerminalControls.size() == 3);
+static_assert(kTerminalControls[2].frame.width == 592);
 
 constexpr pippin_shell_item kTerminalItems[] = {
     shellItem(kTerminalControls[0]),
     shellItem(kTerminalControls[1]),
     shellItem(kTerminalControls[2]),
 };
-
-static_assert(kTerminalControls[2].frame.width == 592);
 
 constexpr pippin_shell_surface kSurfaces[] = {
     {

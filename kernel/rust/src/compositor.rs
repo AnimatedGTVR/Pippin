@@ -40,6 +40,8 @@ const CONTROL_FLAG_DISABLED: u8 = 1 << 1;
 const HEADER_HEIGHT: i32 = 44;
 const SCROLL_LINE: i32 = 32;
 const CONTENT_BOTTOM_PADDING: i32 = 20;
+const TEXT_INPUT_LIMIT: usize = 64;
+const ACTION_VALUE_SEPARATOR: char = '\u{001f}';
 
 #[derive(Clone)]
 struct Row {
@@ -52,6 +54,14 @@ struct Row {
     y: i32,
     width: i32,
     height: i32,
+}
+
+#[derive(Clone)]
+struct EditState {
+    window_id: String,
+    row: usize,
+    value: String,
+    cursor: usize,
 }
 
 #[derive(Clone, Copy)]
@@ -114,6 +124,7 @@ pub struct Compositor {
     hovered_control: Option<(String, usize)>,
     pressed_control: Option<(String, usize)>,
     focused_control: Option<(String, usize)>,
+    edits: Vec<EditState>,
     focus_scope: FocusScope,
     drag: Option<(String, i32, i32)>, // window ID and pointer offset
 }
@@ -129,6 +140,7 @@ impl Compositor {
             hovered_control: None,
             pressed_control: None,
             focused_control: None,
+            edits: Vec::new(),
             focus_scope: FocusScope::Desktop,
             drag: None,
         };
@@ -236,6 +248,7 @@ impl Compositor {
         }
         if let Some(id) = line.strip_prefix("X|") {
             self.windows.retain(|window| window.id != id);
+            self.edits.retain(|edit| edit.window_id != id);
             if id == "wallpaper" { self.wallpaper_base = 0x002f80ed; }
             self.repair_focus_scope();
             self.render();
@@ -282,6 +295,7 @@ impl Compositor {
         }
 
         if let Some(index) = self.windows.iter().position(|window| window.id == id) {
+            self.edits.retain(|edit| edit.window_id != id);
             let mut window = self.windows.remove(index);
             window.role = role;
             window.x = x;
@@ -319,6 +333,14 @@ impl Compositor {
         }
 
         if scan & 0x80 == 0 {
+            // Editable controls consume text/navigation before generic window
+            // scrolling. This makes Space text, Home/End caret movement, etc.
+            let (edited, action) = self.handle_edit_key(scan, text, extended);
+            if edited {
+                self.render();
+                return (action, Vec::new());
+            }
+
             // Extended navigation keys scroll only the active native window.
             if extended {
                 let handled = match scan {
@@ -353,7 +375,8 @@ impl Compositor {
                 return (None, Vec::new());
             }
 
-            // Enter or Space activates only a still-valid focused control.
+            // Enter or Space activates normal controls. Text fields consumed
+            // those keys above, so Space remains insertable while editing.
             if matches!(scan, 0x1c | 0x39) {
                 self.repair_focus_scope();
                 if let Some(action) = self.focused_action() {
@@ -419,6 +442,153 @@ impl Compositor {
         self.left_down = left;
         self.render();
         (action, events)
+    }
+
+    fn row_is_editable(row: &Row) -> bool {
+        matches!(row.kind, b's' | b'e')
+            && row.flags & CONTROL_FLAG_DISABLED == 0
+            && !row.action.is_empty()
+    }
+
+    fn editable_focus(&self) -> Option<(String, usize)> {
+        let (id, row_index) = self.focused_control.as_ref()?;
+        let window = self.windows.iter()
+            .find(|window| !window.minimized && &window.id == id)?;
+        let row = window.rows.get(*row_index)?;
+        if !Self::row_is_editable(row) { return None; }
+        Some((id.clone(), *row_index))
+    }
+
+    fn edit_index(&self, window_id: &str, row: usize) -> Option<usize> {
+        self.edits.iter().position(|edit| edit.window_id == window_id && edit.row == row)
+    }
+
+    fn ensure_edit_state(&mut self, window_id: &str, row: usize) -> usize {
+        if let Some(index) = self.edit_index(window_id, row) {
+            return index;
+        }
+
+        self.edits.push(EditState {
+            window_id: window_id.to_string(),
+            row,
+            value: String::new(),
+            cursor: 0,
+        });
+        self.edits.len() - 1
+    }
+
+    fn edit_snapshot(&self, window_id: &str, row: usize) -> (String, usize) {
+        self.edit_index(window_id, row)
+            .map(|index| {
+                let edit = &self.edits[index];
+                (edit.value.clone(), edit.cursor)
+            })
+            .unwrap_or_else(|| (String::new(), 0))
+    }
+
+    fn edit_visible_start(length: usize, cursor: usize, max_chars: usize) -> usize {
+        if length <= max_chars { return 0; }
+        cursor.saturating_sub(max_chars.saturating_sub(1))
+            .min(length.saturating_sub(max_chars))
+    }
+
+    fn place_edit_cursor(&mut self, window_id: &str, row: usize,
+                         local_x: i32, width: i32, prefix_width: i32) {
+        let index = self.ensure_edit_state(window_id, row);
+        let max_chars = (((width - 28 - prefix_width).max(12)) / 12) as usize;
+        let length = self.edits[index].value.len();
+        let start = Self::edit_visible_start(
+            length,
+            self.edits[index].cursor,
+            max_chars.max(1),
+        );
+        let column = ((local_x - 14 - prefix_width).max(0) / 12) as usize;
+        self.edits[index].cursor = (start + column).min(length);
+    }
+
+    fn handle_edit_key(&mut self, scan: u8, text: Option<u8>, extended: bool)
+        -> (bool, Option<String>) {
+        let Some((window_id, row_index)) = self.editable_focus() else {
+            return (false, None);
+        };
+
+        let (action, kind) = self.windows.iter()
+            .find(|window| window.id == window_id)
+            .and_then(|window| window.rows.get(row_index))
+            .map(|row| (row.action.clone(), row.kind))
+            .unwrap_or_else(|| (String::new(), 0));
+
+        let edit_index = self.ensure_edit_state(&window_id, row_index);
+        let edit = &mut self.edits[edit_index];
+
+        if extended {
+            match scan {
+                0x4b => { // Left
+                    edit.cursor = edit.cursor.saturating_sub(1);
+                    return (true, None);
+                }
+                0x4d => { // Right
+                    edit.cursor = (edit.cursor + 1).min(edit.value.len());
+                    return (true, None);
+                }
+                0x47 => { // Home
+                    edit.cursor = 0;
+                    return (true, None);
+                }
+                0x4f => { // End
+                    edit.cursor = edit.value.len();
+                    return (true, None);
+                }
+                0x53 => { // Delete
+                    if edit.cursor < edit.value.len() {
+                        edit.value.remove(edit.cursor);
+                    }
+                    return (true, None);
+                }
+                _ => {}
+            }
+        }
+
+        match scan {
+            0x0e => { // Backspace
+                if edit.cursor > 0 {
+                    edit.cursor -= 1;
+                    edit.value.remove(edit.cursor);
+                }
+                (true, None)
+            }
+            0x1c => { // Enter submits the field value.
+                let submitted = edit.value.clone();
+                let payload = if action.is_empty() {
+                    None
+                } else {
+                    Some(alloc::format!(
+                        "{}{}{}",
+                        action,
+                        ACTION_VALUE_SEPARATOR,
+                        submitted
+                    ))
+                };
+
+                // Command-style text fields clear after submission; search
+                // controls retain the current query.
+                if kind == b'e' {
+                    edit.value.clear();
+                    edit.cursor = 0;
+                }
+                (true, payload)
+            }
+            _ => {
+                if let Some(byte) = text.filter(|byte| (0x20..=0x7e).contains(byte)) {
+                    if edit.value.len() < TEXT_INPUT_LIMIT {
+                        edit.value.insert(edit.cursor, byte as char);
+                        edit.cursor += 1;
+                    }
+                    return (true, None);
+                }
+                (false, None)
+            }
+        }
     }
 
     fn is_scrollable(window: &Window) -> bool {
@@ -719,7 +889,8 @@ impl Compositor {
         let window = self.windows.iter()
             .find(|window| !window.minimized && &window.id == id)?;
         let row = window.rows.get(*index)?;
-        if row.flags & CONTROL_FLAG_DISABLED != 0 || row.action.is_empty() {
+        if row.flags & CONTROL_FLAG_DISABLED != 0 || row.action.is_empty()
+            || Self::row_is_editable(row) {
             return None;
         }
         Some(row.action.clone())
@@ -823,8 +994,26 @@ impl Compositor {
                 if control.flags & CONTROL_FLAG_DISABLED == 0
                     && control.flags & CONTROL_FLAG_FOCUSABLE != 0 {
                     self.focused_control = Some((window.id.clone(), row));
+
+                    if Self::row_is_editable(control) {
+                        self.place_edit_cursor(
+                            &window.id,
+                            row,
+                            local_x - control.x,
+                            control.width,
+                            if control.kind == b'e' {
+                                control.text.len() as i32 * 12
+                            } else {
+                                0
+                            },
+                        );
+                    }
+                } else {
+                    self.focused_control = None;
                 }
             }
+        } else {
+            self.focused_control = None;
         }
 
         if matches!(window.role, b'W' | b'L')
@@ -1109,12 +1298,82 @@ impl Compositor {
                     self.fill_rect_clipped(x, y + height - 2, width, 1,
                                            0x00d5d9dc, content_clip);
                 }
-                b's' => {
+                b's' | b'e' => {
                     self.rounded_rect_clipped(x, y, width, height, surface, border, content_clip);
-                    self.text_clipped(x + 14, y + ((height - 14) / 2).max(0),
-                                      &row.text, 2,
-                                      if disabled { 0x0090999f } else { 0x00777f85 },
-                                      content_clip);
+
+                    let (value, cursor) = self.edit_snapshot(&window.id, index);
+                    let text_x = x + 14;
+                    let text_y = y + ((height - 14) / 2).max(0);
+                    let prefix_width = if row.kind == b'e' {
+                        row.text.len() as i32 * 12
+                    } else {
+                        0
+                    };
+                    let value_x = text_x + prefix_width;
+                    let max_chars =
+                        (((width - 32 - prefix_width).max(12)) / 12) as usize;
+
+                    if row.kind == b'e' {
+                        // Generic text fields keep their declared text as a
+                        // permanent prefix. Terminal uses this for "pippin> ".
+                        self.text_clipped(
+                            text_x,
+                            text_y,
+                            &row.text,
+                            2,
+                            if disabled { 0x0090999f } else { 0x006f777d },
+                            content_clip,
+                        );
+                    } else if value.is_empty() {
+                        // Search controls use their declared text as a
+                        // placeholder which disappears once editing starts.
+                        self.text_clipped(
+                            text_x,
+                            text_y,
+                            &row.text,
+                            2,
+                            if disabled { 0x0090999f } else { 0x00777f85 },
+                            content_clip,
+                        );
+                    }
+
+                    if !value.is_empty() {
+                        // Edited text is ASCII-only for now, so byte slicing is
+                        // also character slicing. Keep the caret in the visible
+                        // horizontal window for longer values.
+                        let start = Self::edit_visible_start(
+                            value.len(),
+                            cursor,
+                            max_chars.max(1),
+                        );
+                        let end = (start + max_chars).min(value.len());
+                        self.text_clipped(
+                            value_x,
+                            text_y,
+                            &value[start..end],
+                            2,
+                            if disabled { 0x0090999f } else { ink },
+                            content_clip,
+                        );
+                    }
+
+                    if control_focused && !disabled {
+                        let start = Self::edit_visible_start(
+                            value.len(),
+                            cursor,
+                            max_chars.max(1),
+                        );
+                        let caret_column = cursor.saturating_sub(start).min(max_chars);
+                        let caret_x = value_x + caret_column as i32 * 12;
+                        self.fill_rect_clipped(
+                            caret_x,
+                            y + 8,
+                            2,
+                            (height - 16).max(10),
+                            CHROME_ACCENT,
+                            content_clip,
+                        );
+                    }
                 }
                 b't' => {
                     if !row.action.is_empty() {

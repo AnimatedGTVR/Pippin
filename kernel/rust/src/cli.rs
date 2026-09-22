@@ -217,6 +217,31 @@ impl Shell {
     }
 
     fn handle_desktop_action(&mut self, action: &str) {
+        // Editable controls submit their value through an internal unit-
+        // separator payload. Printable text can never contain this separator,
+        // so it is unambiguous without changing the shell ABI.
+        if let Some((name, value)) = action.split_once('\u{001f}') {
+            match name {
+                "terminal.input" => {
+                    let command = value.trim();
+                    if !command.is_empty() {
+                        let _ = writeln!(self.terminal, "\n[gui terminal] {}", command);
+                        self.execute(command);
+                        self.prompt();
+                    }
+                    return;
+                }
+                "launcher.search" | "files.search" => {
+                    // Search filtering is the next consumer layer. Keep the
+                    // query local for now rather than leaking a control
+                    // character into the legacy COM2 action protocol.
+                    let _ = writeln!(self.terminal, "[{}] query: {}", name, value);
+                    return;
+                }
+                _ => {}
+            }
+        }
+
         let command = if let Some(id) = action.strip_suffix(".open")
             .or_else(|| action.strip_suffix(".restore")) {
             if matches!(id, "launcher" | "files" | "settings" | "terminal") {
