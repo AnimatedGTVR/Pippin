@@ -1,8 +1,8 @@
 //! Pippin kernel core (Rust).
 //!
-//! This is the safety-critical heart of the OS: serial console for now, and
-//! later the memory manager, interrupt dispatch, scheduler, IPC and syscall
-//! table. It is compiled as a `no_std` staticlib and linked into `kernel.elf`
+//! This is the safety-critical heart of the OS: serial console, memory
+//! manager, interrupt dispatch, scheduler, IPC and syscall table. It is
+//! compiled as a `no_std` staticlib and linked into `kernel.elf`
 //! by CMake alongside the C++ runtime, C glue and assembly bring-up.
 //!
 //! Entry chain:
@@ -11,10 +11,8 @@
 
 #![no_std]
 #![no_main]
-// Single-CPU bootstrap: interrupt state and MMU globals are plain mutable
-// statics until the scheduler/per-CPU areas land (Milestone 2+). Rust's
-// `static mut` references are sound here because exactly one CPU exists and
-// interrupts are disabled around every access.
+// Single-CPU bootstrap: mutable globals are accessed by the one CPU. Shared
+// scheduler, heap, IPC and zone mutations mask interrupts around updates.
 #![allow(static_mut_refs)]
 
 extern crate alloc;
@@ -22,13 +20,18 @@ extern crate alloc;
 mod cpu;
 mod apic;
 mod ffi;
+mod event;
 mod gdt;
 mod heap;
 mod idt;
 mod interrupts;
+mod ipc;
 mod mem;
 mod mm;
 mod serial;
+mod sched;
+mod syscall;
+mod zones;
 
 use alloc::boxed::Box;
 use alloc::format;
@@ -36,6 +39,41 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::fmt::Write;
 use core::panic::PanicInfo;
+use core::sync::atomic::{AtomicU64, Ordering};
+use core::sync::atomic::AtomicU16;
+use core::sync::atomic::AtomicBool;
+
+static WORK_A: AtomicU64 = AtomicU64::new(0);
+static WORK_B: AtomicU64 = AtomicU64::new(0);
+static MAIN_PORT: AtomicU16 = AtomicU16::new(0);
+static BOOT_HANDLE: AtomicU64 = AtomicU64::new(0);
+static HANDLE_DENIED: AtomicBool = AtomicBool::new(false);
+
+#[repr(align(64))]
+struct Aligned([u8; 32]);
+
+extern "C" fn worker_a() -> ! {
+    let mut posted = false;
+    loop {
+        let n = WORK_A.fetch_add(1, Ordering::Relaxed);
+        if !posted {
+            posted = event::post(MAIN_PORT.load(Ordering::Relaxed), event::APPLICATION, n);
+        }
+        if n % 4096 == 0 {
+            sched::yield_now();
+        }
+    }
+}
+
+extern "C" fn worker_b() -> ! {
+    loop {
+        WORK_B.fetch_add(1, Ordering::Relaxed);
+        let handle = BOOT_HANDLE.load(Ordering::Relaxed);
+        if handle != 0 && zones::read(handle).is_none() {
+            HANDLE_DENIED.store(true, Ordering::Relaxed);
+        }
+    }
+}
 
 /// The zone heap backs every dynamic allocation on this thread.
 #[global_allocator]
@@ -111,6 +149,11 @@ fn core_main(mb_info: Option<u32>) -> ! {
     let hello: String = format!("vec[{}] sum={}", vec.len(), sum);
     let boxed: Box<u16> = Box::new(0xCAFE);
     let _ = writeln!(console, "  heap:              {} \"{}\" box={:#x}", vec.len(), hello, *boxed);
+    let aligned = Box::new(Aligned([7; 32]));
+    let address = &*aligned as *const Aligned as usize;
+    let value = aligned.0[0];
+    drop(aligned);
+    let _ = writeln!(console, "  heap:              align64={} freed value={}", address % 64 == 0, value);
 
     // Install the kernel GDT/TSS before the IDT uses its double-fault IST.
     unsafe { gdt::init() };
@@ -130,10 +173,47 @@ fn core_main(mb_info: Option<u32>) -> ! {
         let _ = writeln!(console, "  apic:             unavailable; PIT timer retained");
     }
 
+    unsafe { syscall::init() };
+
+    unsafe { sched::init(worker_a, worker_b) };
+    let port = ipc::create().expect("boot event port");
+    MAIN_PORT.store(port, Ordering::Relaxed);
+    sched::set_event_port(port);
+    event::set_boot_port(port);
+    let zone = zones::create().expect("boot object zone");
+    sched::set_zone(zone);
+    let handle = zones::alloc(zone, 7).expect("boot object handle");
+    let _ = zones::write(handle, b"Pippin");
+    BOOT_HANDLE.store(handle, Ordering::Relaxed);
+    let user_ready = syscall::spawn_demo(port);
+    let _ = writeln!(console, "  syscall:          ring-3 demo ready={user_ready}");
+    let _ = writeln!(console, "  sched:            boot slot={} pid={}, 2 threads ready",
+                     sched::current_slot().main_thread, sched::current_pid());
+
     let t0 = interrupts::ticks();
     interrupts::sleep_ms(250);
     let t1 = interrupts::ticks();
     let _ = writeln!(console, "  int:              ticks {t0} -> {t1} (+{} in 250 ms)", t1 - t0);
+    let _ = writeln!(console, "  sched:            {} switches, worker ticks {} / {}, work {} / {}",
+                     sched::switches(), sched::task_ticks(1), sched::task_ticks(2),
+                     WORK_A.load(Ordering::Relaxed), WORK_B.load(Ordering::Relaxed));
+    let mut events = 0;
+    let mut user_event = false;
+    let mut timer_events = 0;
+    while let Some(event) = event::poll() {
+        events += 1;
+        if event.source_pid == 0 && event.kind == event::TIMER { timer_events += 1; }
+        if event.source_pid == 4 && event.kind == 9 && event.value == 0xC0DE {
+            user_event = true;
+        }
+    }
+    let _ = writeln!(console, "  ipc:              port={} events={} timers={} ring-3 event={}",
+                     port, events, timer_events, user_event);
+    let _ = writeln!(console, "  syscall:          ring-3 task exited={}", sched::task_dead(3));
+    let object = zones::read(handle).expect("owned handle");
+    let _ = writeln!(console, "  zones:            zone={} kind={} data={} denied={}",
+                     zone, object.0, object.1[0] as char, HANDLE_DENIED.load(Ordering::Relaxed));
+    let _ = zones::free(handle);
 
     let _ = writeln!(console, "Pippin kernel core enters idle loop.");
     loop {

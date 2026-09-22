@@ -1,12 +1,11 @@
 //! Zone heap: a first-fit free-list allocator that backs `#[global_allocator]`.
 //!
-//! M1 scope: a single 4 MiB static zone carved out of BSS. Pre-scheduler so
-//! nothing is locked; the block list is manipulated with `unsafe` interior
-//! access and is documented single-threaded until the scheduler exists.
-//! No coalescing yet (M1); fragmentation is acceptable for the boot heap.
+//! One 4 MiB static zone carved out of BSS. A short interrupt-masked critical
+//! section protects the free list from preemption on the bootstrap CPU.
 
 use core::alloc::{GlobalAlloc, Layout};
 use core::ptr;
+use crate::cpu;
 
 /// Heap region size. BSS, so it costs nothing until first touch.
 const HEAP_SIZE: usize = 4 * 1024 * 1024;
@@ -60,15 +59,18 @@ unsafe impl GlobalAlloc for HeapAllocator {
             return ptr::null_mut();
         }
         let want = align_up(layout.size(), ALIGN).max(ALIGN);
-        let align = layout.align();
+        let align = layout.align().max(ALIGN);
+        let flags = cpu::irq_save();
 
         let mut prev: *mut Block = ptr::null_mut();
         let mut cur = FREE_HEAD;
         while !cur.is_null() {
             let size = (*cur).size;
             let payload = (*cur).payload() as usize;
-            let pa = align_up(payload, align);
-            let used = pa + want - payload;
+            // Store the original free-block header immediately before the
+            // returned pointer, even when alignment adds padding.
+            let pa = align_up(payload + core::mem::size_of::<usize>(), align);
+            let used = pa + want - cur as usize;
             if used <= size {
                 // Unlink `cur` from the free list.
                 let next = (*cur).next;
@@ -84,11 +86,14 @@ unsafe impl GlobalAlloc for HeapAllocator {
                     FREE_HEAD = tail;
                 }
                 (*cur).size = used;
+                ((pa - core::mem::size_of::<usize>()) as *mut usize).write(cur as usize);
+                cpu::irq_restore(flags);
                 return pa as *mut u8;
             }
             prev = cur;
             cur = (*cur).next;
         }
+        cpu::irq_restore(flags);
         ptr::null_mut()
     }
 
@@ -96,10 +101,12 @@ unsafe impl GlobalAlloc for HeapAllocator {
         if ptr.is_null() || !HEAP_READY {
             return;
         }
-        let header = (ptr as *mut Block).sub(1);
+        let flags = cpu::irq_save();
+        let header = *((ptr as usize - core::mem::size_of::<usize>()) as *const usize) as *mut Block;
         let size = (*header).size;
         header.write(Block { size, next: FREE_HEAD });
         FREE_HEAD = header;
+        cpu::irq_restore(flags);
     }
 }
 

@@ -5,6 +5,7 @@ add_subdirectory(cpp)
 add_executable(kernel.elf
   "${CMAKE_CURRENT_SOURCE_DIR}/asm/boot.S"
   "${CMAKE_CURRENT_SOURCE_DIR}/asm/isr.S")
+target_sources(kernel.elf PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/asm/syscall.S")
 
 # Archives reference each other across the language boundary (e.g. Rust
 # calls pippin_driver_count while C++ calls pippin_core_main), so link them
@@ -36,6 +37,7 @@ set_target_properties(kernel.elf PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BI
 # Direct Limine protocol image, entered in long mode at its high ELF entry.
 add_executable(kernel-limine.elf
   "${CMAKE_CURRENT_SOURCE_DIR}/asm/isr.S"
+  "${CMAKE_CURRENT_SOURCE_DIR}/asm/syscall.S"
   "${CMAKE_CURRENT_SOURCE_DIR}/cpp/src/limine.cc")
 target_include_directories(kernel-limine.elf PRIVATE "${CMAKE_SOURCE_DIR}/kernel/c/include")
 target_link_libraries(kernel-limine.elf PRIVATE

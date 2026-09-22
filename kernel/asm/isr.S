@@ -1,12 +1,13 @@
 /* isr.S — normalized IDT stubs and the shared interrupt frame.            */
 /*                                                                         */
 /* A clean interrupt stack (low -> high addresses):                        */
-/*   [GPRs pushed by here (15 x u64)] [vector] [err] [rip] [cs] [rflags]   */
+/*   [GPRs (15 x u64)] [vector] [err] [rip] [cs] [rflags] [rsp] [ss]      */
 /* The Rust dispatcher `pippin_int_dispatch` walks that frame; see         */
 /* kernel/rust/src/idt.rs.                                                 */
 
 .section .text
 .extern pippin_int_dispatch
+.extern pippin_current_fx_area
 
 /* Stub for vectors with no CPU error code: pad one in. */
 .macro ISR_STUB vector
@@ -52,8 +53,21 @@ isr_common:
     pushq %r13
     pushq %r14
     pushq %r15
+    cld
+    movq pippin_current_fx_area(%rip), %rax
+    testq %rax, %rax
+    jz 1f
+    fxsave64 (%rax)
+1:
     movq %rsp, %rdi
+    andq $-16, %rsp
     call pippin_int_dispatch
+    movq %rax, %rsp
+    movq pippin_current_fx_area(%rip), %rax
+    testq %rax, %rax
+    jz 2f
+    fxrstor64 (%rax)
+2:
     popq %r15
     popq %r14
     popq %r13

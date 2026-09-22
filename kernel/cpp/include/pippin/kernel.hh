@@ -6,8 +6,7 @@
 namespace pippin {
 namespace kabi {
 
-// Syscall numbers (draft; wired up at Milestone 2). Keep in sync with the
-// Rust syscall table in kernel/rust/src/syscall.rs when it lands.
+// Syscall numbers. Keep in sync with kernel/rust/src/syscall.rs.
 enum Syscall : uint32_t {
     SYSCALL_EXIT = 0,
     SYSCALL_LOG = 1,

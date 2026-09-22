@@ -15,6 +15,7 @@ kernel_entry(mb_info) or limine_start()     C++
          ├─ ffi::cpp_version()      ← reverse bridge into C++
          ├─ ffi::driver_count()     ← reverse bridge into drivers
          ├─ GDT/TSS → IDT → PIT → APIC timer
+         ├─ scheduler → IPC/Event Manager → syscall entry
          └─ loop { cpu::halt() }
 ```
 
@@ -36,16 +37,19 @@ back into (`kernel/rust/src/ffi.rs`). Nothing enters Rust but through
 | `gdt.rs`      | GDT, TSS, and double-fault stack |
 | `idt.rs`/`interrupts.rs` | 256-vector IDT, PIC/PIT and interrupt dispatch |
 | `apic.rs`     | calibrated local APIC timer |
+| `sched.rs`    | preemptive run queue, task stacks, process slots, FP state |
+| `syscall.rs`  | numbered ring-3 syscall table and demo process setup |
+| `ipc.rs`/`event.rs` | owned message ports and Event Manager delivery |
+| `zones.rs`    | owned zones and generation-checked object handles |
 | `ffi.rs`      | `extern "C"` bridge: `pippin_cpp_version`, `pippin_driver_count` |
 | `lib.rs`      | `pippin_core_main`, `#[panic_handler]` |
 
 ## Naming and the "Manager" convention
 
-Subsystem modules follow the classic Macintosh names — `mem`, `proc`, `event`,
-`ipc`, `file`, `drv`, `disp`, `win`, `menu`, `ctrl`, `res`. Each ships a
-`*Manager` struct that owns its state and is constructed exactly once during
-boot. This makes the Toolbox structure visible from the kernel's own source
-tree, not just from the docs.
+Subsystem modules follow the classic Macintosh names — `mem`, `event`, `ipc`,
+and later `file`, `drv`, `disp`, `win`, `menu`, `ctrl`, `res`. Current managers
+use module-level state on one CPU; the remaining Toolbox managers arrive in
+later milestones.
 
 ## Milestone progression
 
@@ -54,22 +58,26 @@ tree, not just from the docs.
   - higher-half 4 KiB tables on Multiboot, Limine page tables on the ISO path,
   - GDT/TSS, 256-vector IDT, Rust dispatcher, and PIT→APIC timer handoff,
   - zone allocator backing `Box`/`Vec` through `#[global_allocator]`.
-- **Milestone 2 — processes & syscalls:**
+- **Milestone 2 — processes & syscalls (complete):**
   - `syscall`/`sysret` trampolines (asm), numbered table with names from
     `pippin::kabi::Syscall` (`kernel/cpp/include/pippin/kernel.hh`),
   - scheduler: preemptive, per-task FP/XMM save (fxsave/fxrstor), quantum
     timers,
-  - IPC: message ports carrying typed `Event`s into the event loop.
+  - IPC: owned message ports carrying typed `Event`s into the event loop,
+  - owned zones with opaque generation-checked handles.
+
+The M2 demo runs one ring-3 task in the shared boot address space. The task
+maps a page, logs, sends an IPC event and exits. General executable loading
+and private process page tables are later work.
 - **Milestone 3 — file & drivers:** VFS + FAT (then ISO9660), the Driver
   Manager consuming C++ `Driver`s.
 
 ## Interrupt discipline
 
 Until the IDT exists, interrupts are off and the world is single-threaded.
-`cpu::cli`/`cpu::sti` are the only toggles; the serial writer locks nothing and
-is callable from the panic handler. When preemption arrives, every shared
-structure grows a proper spinlock — the panic handler must stay interrupt-safe
-(it is: serial writes are byte-blocking and non-recursive).
+`cpu::cli`/`cpu::sti` control boot interrupt state. Shared scheduler, heap,
+IPC and zone mutations mask local interrupts on this single-CPU kernel. The
+serial writer is byte-blocking and non-recursive, including in panic output.
 
 ## FP/XMM policy
 
@@ -78,7 +86,7 @@ structure grows a proper spinlock — the panic handler must stay interrupt-safe
   XM surprises.
 - SSE is nonetheless initialized at boot (CR4.OSFXSR) because compilers emit
   integer SIMD (see [boot.md](boot.md) for the #UD story).
-- Once tasks exist, the scheduler saves/restores the full FPU/XMM context
+- The scheduler saves/restores the full FPU/XMM context
   (`fxsave64`/`fxrstor64`) per task, so strictly-float drivers are possible
   later without poisoning the core.
 

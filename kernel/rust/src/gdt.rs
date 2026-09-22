@@ -22,7 +22,7 @@ struct Gdtr {
     base: u64,
 }
 
-static mut GDT: [u64; 5] = [0; 5];
+static mut GDT: [u64; 7] = [0; 7];
 static mut TSS: Tss = Tss {
     reserved0: 0,
     rsp: [0; 3],
@@ -56,6 +56,8 @@ pub unsafe fn init() {
         | ((limit & 0xF0000) << 32)
         | (((base >> 24) & 0xFF) << 56);
     GDT[4] = base >> 32;
+    GDT[5] = 0x00CF_F200_0000_FFFF; // ring-3 data, selector 0x2b
+    GDT[6] = 0x00AF_FA00_0000_FFFF; // ring-3 code, selector 0x33
 
     let gdtr = Gdtr {
         limit: (core::mem::size_of_val(&GDT) - 1) as u16,
@@ -83,4 +85,9 @@ pub unsafe fn init() {
 
 pub const fn double_fault_ist() -> u8 {
     DOUBLE_FAULT_IST
+}
+
+/// RSP used when a future ring-3 task enters the kernel.
+pub unsafe fn set_kernel_stack(rsp: u64) {
+    TSS.rsp[0] = rsp;
 }

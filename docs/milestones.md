@@ -1,7 +1,7 @@
 # Milestones
 
-Each milestone leaves the system running in QEMU. M0 and the Multiboot M1 path
-use `make run`; the Limine M1 path uses `make iso` and boots the ISO in QEMU.
+Each milestone leaves the system running in QEMU. The Multiboot path uses
+`make run`; the Limine path uses `make iso` and boots the ISO in QEMU.
 
 ## M0 — Skeleton (complete) ✅
 
@@ -29,13 +29,17 @@ use `make run`; the Limine M1 path uses `make iso` and boots the ISO in QEMU.
 - [x] Switch Rust to the freestanding `x86_64-unknown-none` target and update
       `.cargo/config.toml` + CMake `PIPPIN_RUST_TARGET_SUBDIR` together
 
-## M2 — Processes & IPC
+## M2 — Processes & IPC (complete) ✅
 
-- [ ] `syscall`/`sysret` trampolines; numbered table (`pippin::kabi::Syscall`)
-- [ ] Preemptive scheduler: run queues, quantum, per-task FP/XMM save/restore
-- [ ] Threads + the "process slot" model (classic ProcMenu energy)
-- [ ] Message ports; Event Manager feeds the loop over IPC
-- [ ] Memory zones with ownership; handles (not pointers) for user objects
+- [x] `syscall`/`sysret` trampolines; numbered table (`pippin::kabi::Syscall`)
+- [x] Preemptive scheduler: run queue, quantum, per-task FP/XMM save/restore
+- [x] Threads + the "process slot" model (classic ProcMenu energy)
+- [x] Message ports; Event Manager feeds the loop over IPC
+- [x] Memory zones with ownership; handles (not pointers) for user objects
+
+M2 demonstrates one ring-3 process in the shared boot address space. Private
+address spaces, general executable loading, and a user Toolbox ABI remain
+future work.
 
 ## M3 — Drivers & File
 

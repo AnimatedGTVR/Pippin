@@ -57,7 +57,8 @@ connect build, image, and emulator steps on the development host.
 
 - **M0 — Skeleton (complete):** multi-language build wired end-to-end, boots in QEMU.
 - **M1 — Core (complete):** higher-half paging, GDT/TSS/IDT, frame and heap allocators, APIC timer, Limine ISO.
-- **M2 — Processes:** scheduler, syscall ABI, IPC ports.
+- **M2 — Processes (complete):** preemptive scheduler, ring-3 syscall ABI,
+  IPC event ports, owned zones and handles.
 - **M3 — Drivers:** ACPI/PCI, PS/2, VESA framebuffer, disk.
 - **M4 — GUI:** compositor, window/menu/control managers, retro desktop.
 - **M5 — Apps:** C++ and Rust applications using the Toolbox API.

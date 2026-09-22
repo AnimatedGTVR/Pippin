@@ -87,3 +87,20 @@ pub unsafe fn write_msr(msr: u32, value: u64) {
     asm!("wrmsr", in("ecx") msr, in("eax") value as u32,
          in("edx") (value >> 32) as u32, options(nomem, nostack));
 }
+
+/// Save RFLAGS and mask interrupts for a short single-CPU critical section.
+pub fn irq_save() -> u64 {
+    let flags: u64;
+    unsafe {
+        asm!("pushfq", "pop {}", out(reg) flags, options(preserves_flags));
+        cli();
+    }
+    flags
+}
+
+/// Restore the previous interrupt-enabled state.
+pub fn irq_restore(flags: u64) {
+    if flags & (1 << 9) != 0 {
+        unsafe { sti(); }
+    }
+}

@@ -14,6 +14,8 @@ use crate::mem;
 pub const PRESENT: u64 = 1 << 0;
 pub const WRITABLE: u64 = 1 << 1;
 const UNCACHED: u64 = (1 << 3) | (1 << 4); // PWT | PCD
+const USER: u64 = 1 << 2;
+const HUGE: u64 = 1 << 7;
 
 const LEVEL_SHIFT: [u64; 4] = [39, 30, 21, 12];
 const PD_ENTRIES: usize = 512;
@@ -112,4 +114,55 @@ pub fn map_mmio_page(phys: u64) -> Option<*mut u8> {
         core::arch::asm!("invlpg [{}]", in(reg) phys, options(nostack, preserves_flags));
     }
     Some(phys as *mut u8)
+}
+
+/// Map one low user page, splitting a bootloader huge page if necessary.
+/// Only the selected leaf gains user access; adjacent identity pages remain
+/// supervisor-only. The caller owns the physical frame.
+pub fn map_user_page(virt: u64, phys: u64) -> Option<()> {
+    if virt >= INITIAL_MAP_SIZE || virt & 0xFFF != 0 || phys & 0xFFF != 0 {
+        return None;
+    }
+    let root = (crate::cpu::read_cr3() & !0xFFF) as *mut u64;
+    unsafe {
+        let pml4e = root.add(0);
+        if *pml4e & PRESENT == 0 { return None; }
+        *pml4e |= USER;
+        let pdpt = (*pml4e & !0xFFF) as *mut u64;
+        let pdpte = pdpt.add(level_index(virt, 1));
+        if *pdpte & HUGE != 0 {
+            let old = *pdpte;
+            let base = old & !((1u64 << 30) - 1);
+            let pd_phys = mem::alloc_zeroed_frame()?;
+            let pd = pd_phys as *mut u64;
+            for i in 0..512 {
+                *pd.add(i) = (base + i as u64 * (1 << 21)) | PRESENT | WRITABLE | HUGE;
+            }
+            *pdpte = pd_phys | PRESENT | WRITABLE | USER;
+        }
+        if *pdpte & PRESENT == 0 {
+            let pd_phys = mem::alloc_zeroed_frame()?;
+            *pdpte = pd_phys | PRESENT | WRITABLE | USER;
+        } else { *pdpte |= USER; }
+        let pd = (*pdpte & !0xFFF) as *mut u64;
+        let pde = pd.add(level_index(virt, 2));
+        if *pde & HUGE != 0 {
+            let old = *pde;
+            let base = old & !((1u64 << 21) - 1);
+            let pt_phys = mem::alloc_zeroed_frame()?;
+            let pt = pt_phys as *mut u64;
+            for i in 0..512 {
+                *pt.add(i) = (base + i as u64 * mem::PAGE_SIZE) | PRESENT | WRITABLE;
+            }
+            *pde = pt_phys | PRESENT | WRITABLE | USER;
+        }
+        if *pde & PRESENT == 0 {
+            let pt_phys = mem::alloc_zeroed_frame()?;
+            *pde = pt_phys | PRESENT | WRITABLE | USER;
+        } else { *pde |= USER; }
+        let pt = (*pde & !0xFFF) as *mut u64;
+        *pt.add(level_index(virt, 3)) = phys | PRESENT | WRITABLE | USER;
+        core::arch::asm!("invlpg [{}]", in(reg) virt, options(nostack, preserves_flags));
+    }
+    Some(())
 }

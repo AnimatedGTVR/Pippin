@@ -125,12 +125,11 @@ processes as protection arrives.
   Manager, user-visible objects are handles into kernel-owned zones rather
   than raw addresses. This is the foundation of the protected Toolbox ABI.
 - **Interrupt discipline.** Early boot is single-threaded and interrupt-free
-  until the IDT/PIC timer live (Milestone 2). All `writeln!` console output
+  until the IDT/PIC timer is live (Milestone 1). All `writeln!` console output
   is byte-flushed and blocking to keep the skeleton deterministic.
 - **No FP in the core.** Kernel code avoids floating point so the scheduler
-  never has to save/restore XMM state for kernel-internal work. SSE is still
-  *enabled* at boot (compilers emit integer SIMD), so the scheduler saves
-  FP/XMM state per task at Milestone 2 anyway (see [kernel.md](kernel.md)).
+  avoids accidental shared FP state. SSE is *enabled* at boot (compilers emit
+  integer SIMD); the scheduler saves FP/XMM state per task (see [kernel.md](kernel.md)).
 
 ## 7. Memory model
 
@@ -145,13 +144,14 @@ processes as protection arrives.
 
 ## 8. Processes, IPC and syscalls
 
-- **Syscall ABI:** `syscall` instruction, C parameter convention, numbered
-  table. Draft numbers already reserved in `kernel/cpp/include/pippin/kernel.hh`
+- **Syscall ABI:** `syscall`/`sysret`, C parameter convention, numbered
+  table. Numbers are declared in `kernel/cpp/include/pippin/kernel.hh`
   (`SYSCALL_EXIT`, `SYSCALL_LOG`, `SYSCALL_MMAP`, `SYSCALL_IPC_SEND/RECV`).
 - **IPC:** message ports in the Event Manager spirit — typed events flowing
   from hardware/driver layer up to the app event loop.
-- **Processes:** start as kernel threads with a per-thread "process slot"
-  (classic ProcMenu-style), gain address-space isolation at Milestone 2+.
+- **Processes:** kernel threads and one ring-3 task have per-thread process
+  slots (classic ProcMenu-style). M2 uses one shared address space; private
+  address spaces and executable loading follow in later milestones.
 
 ## 9. Driver model
 

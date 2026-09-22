@@ -1,8 +1,7 @@
 //! Interrupt dispatch, 8259A PIC and the PIT system timer (1000 Hz).
 //!
-//! Dispatch is intentionally small at M1: exceptions fault out loudly,
-//! IRQ0 advances the tick counter, and everything else is logged. Their
-//! handler tables grow as the scheduler, IPC and syscalls arrive.
+//! Exceptions fault out loudly; timer IRQs advance the clock, publish Event
+//! Manager ticks and preempt tasks through the scheduler.
 
 use core::fmt::Write;
 use core::sync::atomic::{AtomicU64, Ordering};
@@ -11,6 +10,8 @@ use crate::apic;
 use crate::cpu;
 use crate::idt;
 use crate::serial;
+use crate::sched;
+use crate::event;
 
 /// System tick counter, advanced by the PIT at 1000 Hz.
 static TICKS: AtomicU64 = AtomicU64::new(0);
@@ -121,8 +122,9 @@ pub fn sleep_ms(ms: u64) {
 /// Common entry point referenced from isr.S. `frame` is the normalized
 /// interrupt frame; do not let it escape this function.
 #[no_mangle]
-pub unsafe extern "C" fn pippin_int_dispatch(frame: *mut idt::IntFrame) {
+pub unsafe extern "C" fn pippin_int_dispatch(frame: *mut idt::IntFrame) -> *mut idt::IntFrame {
     let vector = (*frame).vector as u8;
+    let mut next = frame;
     match vector {
         // Breakpoint: INT3 already pushed the following instruction's address,
         // so a plain return resumes cleanly and the breakpoint can re-fire.
@@ -137,14 +139,20 @@ pub unsafe extern "C" fn pippin_int_dispatch(frame: *mut idt::IntFrame) {
         // System timer.
         32 => {
             if !apic::active() {
-                TICKS.fetch_add(1, Ordering::Relaxed);
+                let tick = TICKS.fetch_add(1, Ordering::Relaxed) + 1;
+                event::on_tick(tick);
+                next = sched::on_tick(frame);
             }
             pic_eoi(0);
         }
         0x30 => {
-            TICKS.fetch_add(1, Ordering::Relaxed);
+            let tick = TICKS.fetch_add(1, Ordering::Relaxed) + 1;
+            event::on_tick(tick);
             apic::eoi();
+            next = sched::on_tick(frame);
         }
+        0x40 => next = sched::on_yield(frame),
+        0x41 => next = sched::on_exit(frame),
         0xFF => {} // local APIC spurious vector needs no EOI
         // Remaining hardware IRQs: unmapped for now, log + ack.
         33..=47 => {
@@ -157,6 +165,7 @@ pub unsafe extern "C" fn pippin_int_dispatch(frame: *mut idt::IntFrame) {
         }
         v => log_fatal(frame, v, "unhandled interrupt"),
     }
+    next
 }
 
 /// Dead-end for CPU exceptions: report the frame, then hang.

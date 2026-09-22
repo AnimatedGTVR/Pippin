@@ -42,4 +42,4 @@ and a 250 ms sleep check interrupt dispatch before the idle loop.
 
 Pippin keeps floating-point work out of the kernel core. The Multiboot path
 enables SSE in CR4 before entering Rust; Limine provides a 64-bit handoff with
-SSE available. Task FP state management belongs to M2.
+SSE available. M2 saves each task's FP/XMM state on interrupt switches.
