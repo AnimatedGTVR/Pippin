@@ -1,6 +1,4 @@
-set(PIPPIN_NATIVE_APP_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
-set(PIPPIN_HELLO_ELF "${CMAKE_BINARY_DIR}/apps/native/pippin_hello_app")
-set(PIPPIN_APP_BLOB "${CMAKE_BINARY_DIR}/pippin_hello_blob.o")
+set(PIPPIN_HELLO_ELF "${CMAKE_BINARY_DIR}/apps/native/pippin-hello.elf")
 
 add_executable(pippin_hello_app hello.cpp)
 set_target_properties(pippin_hello_app PROPERTIES
@@ -30,25 +28,11 @@ target_link_options(pippin_hello_app PRIVATE
   -Wl,--build-id=none
   -T "${CMAKE_CURRENT_SOURCE_DIR}/user.ld")
 
-find_program(PIPPIN_OBJCOPY NAMES objcopy llvm-objcopy REQUIRED)
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/embed.S.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/embed.S"
+  @ONLY)
 
-add_custom_command(
-  OUTPUT "${PIPPIN_APP_BLOB}"
-  COMMAND "${PIPPIN_OBJCOPY}"
-          --input-target=binary
-          --output-target=elf64-x86-64
-          --binary-architecture=i386:x86-64
-          --rename-section .data=.rodata.pippin_app,alloc,load,readonly,data,contents
-          pippin-hello.elf "${PIPPIN_APP_BLOB}"
-  COMMAND "${PIPPIN_OBJCOPY}"
-          --redefine-sym _binary_pippin_hello_elf_start=pippin_hello_elf_start
-          --redefine-sym _binary_pippin_hello_elf_end=pippin_hello_elf_end
-          --redefine-sym _binary_pippin_hello_elf_size=pippin_hello_elf_size
-          "${PIPPIN_APP_BLOB}"
-  DEPENDS pippin_hello_app
-  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/apps/native"
-  COMMENT "Embedding native ELF app for Pippin loader"
-  VERBATIM)
-
-add_custom_target(pippin-native-app-blob DEPENDS "${PIPPIN_APP_BLOB}")
-set(PIPPIN_APP_BLOB "${PIPPIN_APP_BLOB}" PARENT_SCOPE)
+add_library(pippin_app_blob STATIC
+  "${CMAKE_CURRENT_BINARY_DIR}/embed.S")
+add_dependencies(pippin_app_blob pippin_hello_app)
