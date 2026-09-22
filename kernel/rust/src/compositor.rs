@@ -42,6 +42,8 @@ const SCROLL_LINE: i32 = 32;
 const CONTENT_BOTTOM_PADDING: i32 = 20;
 const TEXT_INPUT_LIMIT: usize = 64;
 const ACTION_VALUE_SEPARATOR: char = '\u{001f}';
+const TERMINAL_HISTORY_LINES: usize = 64;
+const TERMINAL_LINE_LIMIT: usize = 96;
 
 #[derive(Clone)]
 struct Row {
@@ -125,6 +127,7 @@ pub struct Compositor {
     pressed_control: Option<(String, usize)>,
     focused_control: Option<(String, usize)>,
     edits: Vec<EditState>,
+    terminal_lines: Vec<String>,
     focus_scope: FocusScope,
     drag: Option<(String, i32, i32)>, // window ID and pointer offset
 }
@@ -141,6 +144,7 @@ impl Compositor {
             pressed_control: None,
             focused_control: None,
             edits: Vec::new(),
+            terminal_lines: vec!["Native C++ shell online.".to_string()],
             focus_scope: FocusScope::Desktop,
             drag: None,
         };
