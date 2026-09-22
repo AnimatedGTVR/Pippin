@@ -5,8 +5,8 @@ use alloc::vec::Vec;
 use alloc::string::{String, ToString};
 use crate::window_server::{Event, WindowServer};
 
-pub const WIDTH: usize = 800;
-pub const HEIGHT: usize = 600;
+pub const WIDTH: usize = 1024;
+pub const HEIGHT: usize = 768;
 const MAX_WINDOWS: usize = 16;
 
 // Pippin chrome: compact GNOME-like header bars, Skift-inspired soft surfaces,
@@ -349,25 +349,61 @@ impl Compositor {
         let y = self.cursor_y;
         match self.clients.cursor_at(x, y) {
             1 => {
-                self.fill_rect(x, y + 3, 3, 12, 0x00ffffff);
-                self.fill_rect(x + 3, y + 7, 10, 8, 0x00ffffff);
-                self.border(x, y + 3, 13, 12, 0x001b2b34);
+                // Hand pointer: larger and outlined so it stays readable on both
+                // the blue desktop and light application surfaces.
+                self.fill_rect(x + 5, y + 2, 4, 16, 0x0019232d);
+                self.fill_rect(x + 9, y + 8, 11, 11, 0x0019232d);
+                self.fill_rect(x + 7, y + 4, 2, 12, 0x00ffffff);
+                self.fill_rect(x + 10, y + 10, 8, 7, 0x00ffffff);
                 return;
             }
             2 => {
-                self.fill_rect(x + 4, y, 2, 16, 0x00ffffff);
-                self.fill_rect(x, y, 10, 2, 0x00ffffff);
-                self.fill_rect(x, y + 14, 10, 2, 0x00ffffff);
+                // Text caret cursor.
+                self.fill_rect(x + 5, y, 3, 22, 0x0019232d);
+                self.fill_rect(x, y, 13, 3, 0x0019232d);
+                self.fill_rect(x, y + 19, 13, 3, 0x0019232d);
+                self.fill_rect(x + 6, y + 2, 1, 18, 0x00ffffff);
                 return;
             }
             _ => {}
         }
-        for row in 0..18 {
-            for column in 0..=row / 2 {
-                self.set_pixel(x + column, y + row, 0x00ffffff);
+
+        // Pippin arrow cursor: a proper 24px white pointer with a dark outline
+        // and small shadow, replacing the old skinny triangular cursor.
+        const CURSOR: [&str; 24] = [
+            "##......................",
+            "#W#.....................",
+            "#WW#....................",
+            "#WWW#...................",
+            "#WWWW#..................",
+            "#WWWWW#.................",
+            "#WWWWWW#................",
+            "#WWWWWWW#...............",
+            "#WWWWWWWW#..............",
+            "#WWWWWWWWW#.............",
+            "#WWWWWWWWWW#............",
+            "#WWWWWWWWWWW#...........",
+            "#WWWWWW#######..........",
+            "#WWW#WW#.................",
+            "#WW#.#WW#................",
+            "#W#..#WW#................",
+            "##....#WW#...............",
+            "......#WW#...............",
+            ".......#WW#..............",
+            ".......#WW#..............",
+            "........##...............",
+            "........................",
+            "........................",
+            "........................",
+        ];
+        for (dy, row) in CURSOR.iter().enumerate() {
+            for (dx, pixel) in row.bytes().enumerate() {
+                match pixel {
+                    b'#' => self.set_pixel(x + dx as i32, y + dy as i32, 0x0019232d),
+                    b'W' => self.set_pixel(x + dx as i32, y + dy as i32, 0x00ffffff),
+                    _ => {}
+                }
             }
-            self.set_pixel(x, y + row, 0x001b2b34);
-            self.set_pixel(x + row / 2, y + row, 0x001b2b34);
         }
     }
 
