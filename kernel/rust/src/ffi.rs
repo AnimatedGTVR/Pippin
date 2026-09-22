@@ -18,6 +18,7 @@ pub struct ShellItemRaw {
 pub struct ShellSurfaceRaw {
     id: *const u8,
     role: u8,
+    visible: u8,
     x: i32,
     y: i32,
     width: i32,
@@ -36,6 +37,7 @@ pub struct ShellItem {
 pub struct ShellSurface {
     pub id: &'static str,
     pub role: u8,
+    pub visible: bool,
     pub x: i32,
     pub y: i32,
     pub width: i32,
@@ -100,6 +102,7 @@ pub fn shell_surface(index: usize) -> Option<ShellSurface> {
     Some(ShellSurface {
         id: unsafe { cstr_to_str(raw.id) },
         role: raw.role,
+        visible: raw.visible != 0,
         x: raw.x,
         y: raw.y,
         width: raw.width,
