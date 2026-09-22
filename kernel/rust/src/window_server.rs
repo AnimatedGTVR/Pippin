@@ -9,8 +9,16 @@ use crate::compositor::{glyph, HEIGHT, WIDTH};
 const MAX_WINDOWS: usize = 8;
 const MAX_WIDTH: i32 = 600;
 const MAX_HEIGHT: i32 = 440;
-const TITLE_HEIGHT: i32 = 32;
-const BORDER: i32 = 2;
+const TITLE_HEIGHT: i32 = 44;
+const BORDER: i32 = 1;
+const FRAME: u32 = 0x009aa2a8;
+const SURFACE: u32 = 0x00f7f7f5;
+const HEADER_ACTIVE: u32 = 0x00e9ecef;
+const HEADER_INACTIVE: u32 = 0x00dfe3e6;
+const INK: u32 = 0x00252b31;
+const MUTED_INK: u32 = 0x006f777d;
+const CLOSE: u32 = 0x00d95d55;
+const SHADOW: u32 = 0x00151b22;
 
 #[derive(Clone, Copy)]
 pub struct Event {
@@ -265,7 +273,7 @@ impl WindowServer {
             let local_x = x - window.x;
             let local_y = y - window.y;
             if local_y < TITLE_HEIGHT {
-                if local_x >= window.frame_width() - 28 {
+                if local_x >= window.frame_width() - 36 {
                     events.push(Event::new(id, "CloseRequested", 0, 0));
                 } else { self.grab = Some(Grab::Move(id, local_x, local_y)); }
             } else if local_x >= window.frame_width() - 14 && local_y >= window.frame_height() - 14 {
@@ -313,17 +321,32 @@ impl WindowServer {
         for window in &self.windows {
             if !window.visible { continue; }
             let focused = self.focused == Some(window.id);
-            fill(pixels, window.x + 7, window.y + 9, window.frame_width(), window.frame_height(), 0x0009141e);
-            fill(pixels, window.x, window.y, window.frame_width(), window.frame_height(), 0x00384250);
-            fill(pixels, window.x + 1, window.y + 1, window.frame_width() - 2, TITLE_HEIGHT - 1,
-                if focused { 0x002a3948 } else { 0x0023303c });
-            text(pixels, window.x + 11, window.y + 11, &window.title, 0x00e5edf3,
-                ((window.frame_width() - 52) / 7).max(0) as usize);
-            let close_x = window.x + window.frame_width() - 25;
-            fill(pixels, close_x, window.y + 8, 16, 16, 0x00675661);
-            text(pixels, close_x + 4, window.y + 9, "X", 0x00ffffff, 1);
+            let fw = window.frame_width();
+            let fh = window.frame_height();
+
+            // Match the bootstrap compositor's Pippin chrome.
+            fill(pixels, window.x + 8, window.y + 10, fw, fh, SHADOW);
+            fill(pixels, window.x + 4, window.y + 5, fw, fh, 0x00323a42);
+            fill(pixels, window.x, window.y, fw, fh, FRAME);
+            fill(pixels, window.x + 1, window.y + 1, fw - 2, fh - 2, SURFACE);
+            fill(pixels, window.x + 1, window.y + 1, fw - 2, TITLE_HEIGHT - 1,
+                if focused { HEADER_ACTIVE } else { HEADER_INACTIVE });
+            fill(pixels, window.x + 1, window.y + TITLE_HEIGHT - 1, fw - 2, 1, 0x00c7cdd1);
+
+            let close_x = window.x + fw - 31;
+            let control_y = window.y + 13;
+            fill(pixels, close_x + 3, control_y, 12, 18, CLOSE);
+            fill(pixels, close_x, control_y + 3, 18, 12, CLOSE);
+            text(pixels, close_x + 6, control_y + 6, "X", 0x00ffffff, 1);
+
+            let title_chars = ((fw - 88) / 7).max(0) as usize;
+            let title_px = (window.title.len().min(title_chars) as i32) * 7;
+            let title_x = window.x + ((fw - title_px) / 2).max(14);
+            text(pixels, title_x, window.y + 18, &window.title,
+                if focused { INK } else { MUTED_INK }, title_chars);
+
             fill(pixels, window.x + BORDER, window.y + TITLE_HEIGHT,
-                window.width, window.height, 0x0019232d);
+                window.width, window.height, SURFACE);
             for sy in 0..window.height {
                 let dy = window.y + TITLE_HEIGHT + sy;
                 if dy < 0 || dy >= HEIGHT as i32 { continue; }
@@ -335,10 +358,13 @@ impl WindowServer {
                     }
                 }
             }
-            fill(pixels, window.x + window.frame_width() - 12,
-                window.y + window.frame_height() - 12, 8, 8, 0x007c8f9a);
+
+            // Small, quiet resize affordance.
+            fill(pixels, window.x + fw - 11, window.y + fh - 5, 7, 1, 0x009aa2a8);
+            fill(pixels, window.x + fw - 8, window.y + fh - 8, 4, 1, 0x009aa2a8);
         }
     }
+
 }
 
 fn parse_i32(value: Option<&str>) -> Option<i32> { value?.parse().ok() }
