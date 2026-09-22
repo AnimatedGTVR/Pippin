@@ -595,6 +595,84 @@ impl Compositor {
         }
     }
 
+    fn search_query<'a>(&'a self, window: &Window) -> Option<&'a str> {
+        let row = window.rows.iter().position(|row| row.kind == b's')?;
+        let edit = self.edit_index(&window.id, row)?;
+        let value = self.edits[edit].value.as_str();
+        if value.is_empty() { None } else { Some(value) }
+    }
+
+    fn contains_ascii_case_insensitive(haystack: &str, needle: &str) -> bool {
+        if needle.is_empty() { return true; }
+        let haystack = haystack.as_bytes();
+        let needle = needle.as_bytes();
+        if needle.len() > haystack.len() { return false; }
+
+        haystack.windows(needle.len()).any(|candidate| {
+            candidate.iter().zip(needle.iter()).all(|(left, right)| {
+                left.to_ascii_lowercase() == right.to_ascii_lowercase()
+            })
+        })
+    }
+
+    fn row_is_filter_result(window: &Window, row: &Row) -> bool {
+        match window.id.as_str() {
+            "launcher" => matches!(
+                row.action.as_str(),
+                "files.open" | "settings.open" | "terminal.open"
+            ),
+            "files" => matches!(
+                row.action.as_str(),
+                "files.documents.open" | "files.downloads.open"
+            ),
+            _ => false,
+        }
+    }
+
+    fn row_visible(&self, window: &Window, _index: usize, row: &Row) -> bool {
+        if !Self::row_is_filter_result(window, row) {
+            return true;
+        }
+
+        let Some(query) = self.search_query(window) else {
+            return true;
+        };
+        Self::contains_ascii_case_insensitive(&row.text, query)
+    }
+
+    fn push_terminal_line(&mut self, line: &str) {
+        let mut clean = String::new();
+        for character in line.chars().take(TERMINAL_LINE_LIMIT) {
+            if character.is_ascii() && !character.is_ascii_control() {
+                clean.push(character);
+            } else if character == '\t' {
+                clean.push(' ');
+            } else {
+                clean.push('?');
+            }
+        }
+
+        self.terminal_lines.push(clean);
+        if self.terminal_lines.len() > TERMINAL_HISTORY_LINES {
+            let excess = self.terminal_lines.len() - TERMINAL_HISTORY_LINES;
+            self.terminal_lines.drain(0..excess);
+        }
+    }
+
+    pub fn append_terminal_history(&mut self, command: &str, output: &str) {
+        if command.trim() == "clear" {
+            self.terminal_lines.clear();
+            self.render();
+            return;
+        }
+
+        self.push_terminal_line(&alloc::format!("pippin> {}", command));
+        for line in output.lines() {
+            self.push_terminal_line(line);
+        }
+        self.render();
+    }
+
     fn is_scrollable(window: &Window) -> bool {
         matches!(window.role, b'W' | b'L')
     }
