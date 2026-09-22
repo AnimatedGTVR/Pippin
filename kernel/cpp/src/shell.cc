@@ -3,8 +3,22 @@
 // C++ owns the shell model and layout. Rust owns composition/input. The two
 // sides meet only through the stable C ABI in <pippin/shell.h>.
 #include <pippin/shell.h>
+#include <pippin/control.hh>
 
 namespace pippin::shell {
+
+constexpr pippin_shell_item shellItem(ui::Control const& control) {
+    return {
+        control.text,
+        control.action,
+        control.kind,
+        static_cast<uint8_t>(control.style),
+        control.frame.x,
+        control.frame.y,
+        control.frame.width,
+        control.frame.height,
+    };
+}
 
 constexpr pippin_shell_item kPanelItems[] = {
     {"Search", "launcher.open", 'b'},
@@ -12,10 +26,25 @@ constexpr pippin_shell_item kPanelItems[] = {
     {"WiFi  Vol  Bat", "settings.open", 'b'},
 };
 
+constexpr ui::ControlSpec kDockSpecs[] = {
+    ui::fixed("Apps", "launcher.open", 'b', ui::ControlStyle::TILE, 104),
+    ui::fixed("Files", "files.open", 'b', ui::ControlStyle::TILE, 104),
+    ui::fixed("Settings", "settings.open", 'b', ui::ControlStyle::TILE, 104),
+};
+
+constexpr auto kDockControls = ui::flow(
+    ui::Flow{
+        .frame = {12, 8, 344, 52},
+        .axis = ui::Axis::HORIZONTAL,
+        .gap = 16,
+    },
+    kDockSpecs
+);
+
 constexpr pippin_shell_item kDockItems[] = {
-    {"Apps", "launcher.open", 'b'},
-    {"Files", "files.open", 'b'},
-    {"Settings", "settings.open", 'b'},
+    shellItem(kDockControls[0]),
+    shellItem(kDockControls[1]),
+    shellItem(kDockControls[2]),
 };
 
 constexpr pippin_shell_item kLauncherItems[] = {
