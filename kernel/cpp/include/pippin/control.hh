@@ -52,6 +52,12 @@ enum class ControlStyle : uint8_t {
     STATUS = 5,
 };
 
+enum ControlFlag : uint8_t {
+    CONTROL_NONE = 0,
+    CONTROL_FOCUSABLE = 1u << 0,
+    CONTROL_DISABLED = 1u << 1,
+};
+
 struct ControlSpec {
     const char* text;
     const char* action;
@@ -59,6 +65,7 @@ struct ControlSpec {
     ControlStyle style;
     int32_t basis;
     uint8_t grow;
+    uint8_t flags;
     int32_t crossBasis;
     Align crossAlign;
 };
@@ -68,6 +75,7 @@ struct Control {
     const char* action;
     uint8_t kind;
     ControlStyle style;
+    uint8_t flags;
     Rect frame;
 };
 
@@ -116,6 +124,10 @@ constexpr Flow inset(Flow layout, Insets insets) {
     return layout;
 }
 
+constexpr uint8_t defaultFlags(const char* action) {
+    return action && action[0] != '\0' ? CONTROL_FOCUSABLE : CONTROL_NONE;
+}
+
 constexpr ControlSpec item(const char* text, const char* action, uint8_t kind,
                            ControlStyle style = ControlStyle::PLAIN,
                            int32_t basis = 0, uint8_t growWeight = 1) {
@@ -126,6 +138,7 @@ constexpr ControlSpec item(const char* text, const char* action, uint8_t kind,
         style,
         basis,
         growWeight,
+        defaultFlags(action),
         0,
         Align::FILL,
     };
@@ -146,6 +159,20 @@ constexpr ControlSpec grow(const char* text, const char* action, uint8_t kind,
 
 constexpr ControlSpec spacer(uint8_t growWeight = 1) {
     return grow("", "", 0, ControlStyle::PLAIN, growWeight);
+}
+
+constexpr ControlSpec disabled(ControlSpec spec) {
+    spec.flags |= CONTROL_DISABLED;
+    spec.flags &= static_cast<uint8_t>(~CONTROL_FOCUSABLE);
+    return spec;
+}
+
+constexpr ControlSpec focusable(ControlSpec spec, bool enabled = true) {
+    if (enabled && (spec.flags & CONTROL_DISABLED) == 0)
+        spec.flags |= CONTROL_FOCUSABLE;
+    else
+        spec.flags &= static_cast<uint8_t>(~CONTROL_FOCUSABLE);
+    return spec;
 }
 
 // Constrain a control on the flow's cross axis and align it inside the cell.
@@ -234,6 +261,7 @@ constexpr ControlSet<N> flow(Flow layout, const ControlSpec (&specs)[N]) {
             specs[i].action,
             specs[i].kind,
             specs[i].style,
+            specs[i].flags,
             frame,
         };
 
