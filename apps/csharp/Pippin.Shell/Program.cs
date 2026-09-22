@@ -25,6 +25,7 @@ public sealed class Panel : Application
                 UiNode.Button("Apps", "launcher.open"),
                 UiNode.Button("Files", "files.open"),
                 UiNode.Button("Settings", "settings.open"),
+                UiNode.Button("Terminal", "terminal.open"),
                 UiNode.Label("WiFi  Sound  Battery")))];
 }
 
@@ -48,7 +49,9 @@ public sealed class Launcher : Application
                 UiNode.Card(UiNode.Button("Files", "files.open"),
                     UiNode.Label("Browse your files")),
                 UiNode.Card(UiNode.Button("Settings", "settings.open"),
-                    UiNode.Label("Configure Pippin"))))];
+                    UiNode.Label("Configure Pippin")),
+                UiNode.Card(UiNode.Button("Terminal", "terminal.open"),
+                    UiNode.Label("Pippin command terminal"))))];
 }
 
 public sealed class Settings : Application

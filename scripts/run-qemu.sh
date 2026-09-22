@@ -14,7 +14,7 @@ if [[ ! -f "$ELF" ]]; then
     exit 1
 fi
 
-display=gtk
+display=gtk,show-menubar=off
 gdb=false
 disk=false
 shell=false
