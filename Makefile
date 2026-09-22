@@ -10,11 +10,10 @@ kernel:
 	cmake --build $(BUILD_DIR) --target kernel.elf -j
 
 run: kernel
-	./scripts/run-qemu.sh
-
-run-shell: kernel
 	dotnet build apps/csharp/Pippin.Shell/Pippin.Shell.csproj
 	./scripts/run-qemu.sh --shell
+
+run-shell: run
 
 run-ui: kernel
 	dotnet build apps/csharp/Pippin.Broker/Pippin.Broker.csproj

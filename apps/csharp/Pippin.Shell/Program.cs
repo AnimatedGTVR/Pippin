@@ -167,9 +167,9 @@ internal sealed class HostBridge(string socketPath, Application[] clients)
         }
         if (DateTime.UtcNow >= deadline) throw new TimeoutException("Pippin did not answer the shell handshake");
 
-        foreach (var name in new[] { "wallpaper", "panel", "dock", "notifications" })
+        foreach (var name in new[] { "wallpaper", "panel", "dock", "terminal", "notifications" })
             await ShowAsync(name);
-        Console.WriteLine("C# desktop displayed in QEMU. Click Pippin or Files to open apps.");
+        Console.WriteLine("C# desktop displayed in QEMU. Terminal is ready; Alt+T brings it to the front.");
         await foreach (var line in incoming.Reader.ReadAllAsync())
             if (line.StartsWith("E|", StringComparison.Ordinal)) await HandleAsync(line[2..]);
     }

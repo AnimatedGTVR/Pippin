@@ -34,8 +34,8 @@ to run it. `make iso` also needs Limine and `xorriso`.
 
 ```sh
 make                # configure + build build/kernel.elf
-make run            # boot it in a QEMU window; serial log in terminal
-make run-shell      # boot the interactive C# host shell in QEMU
+make run            # boot the full Pippin desktop + C# shell in QEMU
+make run-shell      # alias for make run
 make run-ui         # two independent C# apps using the new window API
 make run-headless   # serial console only
 make run-disk       # QEMU window with the FAT32 Hello bundle disk
@@ -46,13 +46,12 @@ make clean
 
 See [docs/build.md](docs/build.md) for the full toolchain and ISO setup.
 
-After `make run`, click the QEMU window and type `fetch` or `help` at the
-`pippin>` prompt. Type `desktop` for the Rust wallpaper compositor, press `N`
-to open a draggable native test window, and press Esc to return to the CLI.
-Use `make run-disk` to make `hello.pipb` available to `ls` and `cat`.
-`make run-shell` starts the host .NET shell and connects it to Pippin over
-QEMU's second serial port. Click Pippin in the panel to open the launcher or
-Files in the dock to open its C# defined window.
+After `make run`, the host .NET shell connects over QEMU's second serial port
+and Pippin enters the full graphical desktop automatically. The panel, dock,
+notifications, and Terminal are created at startup; **Alt+T** brings Terminal
+to the front. `make run-shell` is kept as an alias for this same full-desktop
+boot path. Use `make run-headless` for the kernel/serial-only workflow and
+`make run-disk` to make `hello.pipb` available to `ls` and `cat`.
 `make run-ui` starts a window broker and two separate C# processes. About and
 Task Manager each paint a private surface through the reusable window API;
 both appear in QEMU. See [docs/windowing.md](docs/windowing.md) for the API and

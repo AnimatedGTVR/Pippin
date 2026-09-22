@@ -24,15 +24,17 @@ compositor draws them and returns button actions.
 
 ## What runs today
 
-`make run` opens the QEMU VGA text console. Type `desktop` to switch to an
-800×600 graphics mode. The Rust compositor draws a wallpaper and cursor.
-Press `N` to create a native test window; drag its title bar with the mouse,
-click its square close box, or press Esc to return to the CLI. The native
-window tests z-order, focus and dragging. It is not a C# window.
+`make run` builds and starts the C# shell on the host and boots QEMU with a
+socket-backed second serial port. Pippin automatically enters the 1024×768
+graphics desktop when the shell connects. The panel, dock, Terminal and
+notification surfaces appear at startup. `make run-shell` is an alias for
+this same full-desktop boot path.
 
-`make run-shell` builds and starts the C# shell on the host and boots QEMU with
-a socket-backed second serial port. Pippin automatically enters graphics
-mode when the shell connects. The panel, dock and notification appear first.
+The standalone `desktop` command remains a Rust-compositor-only fallback. It
+does not start host C# applications by itself, because the guest cannot spawn
+the host .NET process.
+
+
 Click **Pippin** to open the launcher, **Files** to open its window, or
 **Settings** to change the wallpaper palette. Window title bars drag, minimize to the dock, maximize/restore, and close. The
 shell bridge also preserves window geometry/state when refreshing content. The C# process owns surface descriptions and
