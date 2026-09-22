@@ -1,0 +1,11 @@
+.section .rodata.pippin_app, "a", @progbits
+.balign 16
+
+.global pippin_hello_elf_start
+.global pippin_hello_elf_end
+
+pippin_hello_elf_start:
+.incbin "@PIPPIN_HELLO_ELF@"
+pippin_hello_elf_end:
+
+.section .note.GNU-stack,"",@progbits
