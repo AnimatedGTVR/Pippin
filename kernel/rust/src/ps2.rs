@@ -65,7 +65,7 @@ pub fn init_mouse() -> bool {
         mouse_sample_rate(200)
         && mouse_sample_rate(100)
         && mouse_sample_rate(80)
-        && matches!(mouse_id(), Some(3 | 4));
+        && matches!(mouse_id(), Some(3) | Some(4));
 
     unsafe {
         MOUSE_PACKET_SIZE = if wheel_mode { 4 } else { 3 };
