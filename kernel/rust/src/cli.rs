@@ -51,6 +51,7 @@ pub struct Shell {
     line: [u8; LINE_CAPACITY],
     len: usize,
     shift: bool,
+    alt: bool,
     caps: bool,
     extended: bool,
     last_was_cr: bool,
@@ -63,7 +64,7 @@ impl Shell {
     pub fn new(terminal: Terminal, bundle: Option<file::Bundle<'static>>) -> Self {
         let mut shell = Self {
             terminal, line: [0; LINE_CAPACITY], len: 0,
-            shift: false, caps: false, extended: false, last_was_cr: false,
+            shift: false, alt: false, caps: false, extended: false, last_was_cr: false,
             bundle, desktop: None, bridge: bridge::Bridge::new(),
         };
         let _ = writeln!(shell.terminal, "Pippin command shell (M4 preview)");
@@ -104,6 +105,14 @@ impl Shell {
 
     pub fn key_scancode(&mut self, scan: u8) {
         if self.desktop.is_some() {
+            // Global desktop shortcut: Alt+T asks the shell client to open its terminal.
+            // Track both Alt keys' set-1 make/break codes before forwarding normal input.
+            if scan == 0x38 { self.alt = true; return; }
+            if scan == 0xb8 { self.alt = false; return; }
+            if self.alt && scan == 0x14 {
+                self.bridge.action("terminal.open");
+                return;
+            }
             let client_active = self.desktop.as_ref().is_some_and(|desktop| desktop.has_client_windows());
             if scan == 0x01 && !client_active {
                 self.desktop.take();
