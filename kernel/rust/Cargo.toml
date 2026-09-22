@@ -1,0 +1,21 @@
+[package]
+name = "pippin-kernel"
+version = "0.1.0"
+edition = "2021"
+description = "Pippin OS kernel core (Rust, no_std)"
+license = "MIT"
+
+# Build as an archive; CMake links it into kernel.elf together with the
+# C++/C/ASM objects. See docs/build.md for why this is a staticlib and how
+# the target story changes at Milestone 1.
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+# Intentionally empty. The kernel core stays dependency-free so the crate
+# builds offline with a bare host toolchain.
+
+[profile.release]
+panic = "abort"
+opt-level = 2
+codegen-units = 1
