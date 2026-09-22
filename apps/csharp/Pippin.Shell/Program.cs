@@ -30,9 +30,9 @@ public sealed class Dock : Application
     public override string Id => "org.pippin.dock";
     public override IEnumerable<Surface> CreateSurfaces() =>
         [new("dock", SurfaceRole.Dock, "Dock", 202, 536, 396, 54,
-            UiNode.Row(UiNode.Button("Files", "files.open"),
-                UiNode.Button("Settings", "settings.open"),
-                UiNode.Button("Launcher", "launcher.open")))];
+            UiNode.Row(UiNode.Button("Files", "files.restore"),
+                UiNode.Button("Settings", "settings.restore"),
+                UiNode.Button("Apps", "launcher.restore")))];
 }
 
 public sealed class Launcher : Application
@@ -169,6 +169,9 @@ internal sealed class HostBridge(string socketPath, Application[] clients)
             case "launcher.open": await ShowAsync("launcher"); break;
             case "settings.open": await ShowAsync("settings"); break;
             case "files.open": await ShowAsync("files"); break;
+            case "launcher.restore": await RestoreOrShowAsync("launcher"); break;
+            case "settings.restore": await RestoreOrShowAsync("settings"); break;
+            case "files.restore": await RestoreOrShowAsync("files"); break;
             case "settings.animations.toggle":
                 animationsEnabled = !animationsEnabled;
                 await ShowStatusAsync("Animations " + (animationsEnabled ? "on" : "off"));
@@ -197,6 +200,11 @@ internal sealed class HostBridge(string socketPath, Application[] clients)
     {
         if (!notificationsEnabled) return;
         await SendAsync("S|notifications|N|482|48|300|96|Notifications|" + Safe(message) + "@");
+    }
+
+    private async Task RestoreOrShowAsync(string name)
+    {
+        await SendAsync("R|" + name);
     }
 
     private async Task ShowAsync(string name)
