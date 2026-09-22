@@ -49,6 +49,13 @@ deeper dive into one slice: [build](build.md), [boot](boot.md),
 | Applications (later) | C++ and Rust; optional C# | Native Toolbox apps first; optional managed C# apps use Toolbox bindings on x86-64 |
 | Build and boot tooling | Shell | Host-side scripts connect build, image creation, and QEMU commands |
 
+This map describes current code and planned roles; it is not a fixed language
+limit. Additional languages, such as Ada/SPARK or Haskell, are welcome when
+they fit a concrete subsystem or application. Each addition should have a
+supported target toolchain, a clear build path, and an explicit boundary to
+the rest of Pippin (usually the Toolbox C ABI). Mentioning a language here
+does not commit it to a milestone.
+
 Future note — **68k**: the planned Motorola 68k port keeps Assembly + Rust + C++
 (kernel) and C++ (drivers), with a C++ and Rust desktop. Optional C# app support
 does not follow to 68k.

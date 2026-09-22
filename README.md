@@ -5,6 +5,9 @@ built with a mix of **Assembly**, **Rust**, **C++** and **C** in the kernel, **C
 drivers, a **C++ and Rust** desktop, optional **C#** applications later, and
 **shell scripts** for build and boot glue.
 
+These are the current choices, not a limit on Pippin's languages. Other
+languages can join when a subsystem or application benefits from them.
+
 > Pippin is currently at **Milestone 0**: a wired project skeleton that builds a
 > kernel ELF which boots under QEMU and talks over the serial console. See
 > [docs/milestones.md](docs/milestones.md).
