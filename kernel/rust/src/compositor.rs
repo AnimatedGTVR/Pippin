@@ -186,7 +186,13 @@ impl Compositor {
             if let Some(index) = self.windows.iter().position(|window| window.id == id) {
                 let mut window = self.windows.remove(index);
                 window.minimized = false;
+                let scope = if matches!(window.role, b'W' | b'L') {
+                    FocusScope::Window(window.id.clone())
+                } else {
+                    FocusScope::Desktop
+                };
                 self.windows.push(window);
+                self.set_focus_scope(scope);
                 self.render();
             }
             return true;
@@ -194,6 +200,7 @@ impl Compositor {
         if let Some(id) = line.strip_prefix("M|") {
             if let Some(index) = self.windows.iter().position(|window| window.id == id) {
                 self.windows[index].minimized = true;
+                self.repair_focus_scope();
                 self.render();
             }
             return true;
@@ -201,6 +208,7 @@ impl Compositor {
         if let Some(id) = line.strip_prefix("X|") {
             self.windows.retain(|window| window.id != id);
             if id == "wallpaper" { self.wallpaper_base = 0x002f80ed; }
+            self.repair_focus_scope();
             self.render();
             return true;
         }
@@ -317,13 +325,20 @@ impl Compositor {
             self.control_at(self.cursor_x, self.cursor_y)
         };
 
+        let mut action = None;
         if !handled && left && !self.left_down {
             self.pressed_control = self.hovered_control.clone();
+            // Window chrome reacts on press; managed controls only focus here.
+            // Their action fires on release if the pointer is still over the
+            // same control.
+            action = self.pointer_down();
         } else if !left && self.left_down {
+            if !handled {
+                action = self.release_control();
+            }
             self.pressed_control = None;
         }
 
-        let action = if !handled && left && !self.left_down { self.press() } else { None };
         if left && !handled {
             if let Some((ref id, offset_x, offset_y)) = self.drag {
                 if let Some(window) = self.windows.iter_mut().find(|window| window.id == *id) {
