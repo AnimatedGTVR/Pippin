@@ -1,7 +1,8 @@
 # Control Manager
 
 Pippin's Control Manager is the first reusable C++ UI manager for the native
-desktop shell. Its first consumers are the Dock and top Panel.
+desktop shell. The Dock, top Panel, Launcher, Files, Settings, and Terminal now
+all use it for their control geometry.
 
 The design is informed by Skift's Karm UI layer, especially these ideas:
 
@@ -107,6 +108,27 @@ constexpr auto controls = ui::flow(
 );
 ```
 
+## Semantic controls
+
+On top of raw `ControlSpec`, the manager now provides small semantic
+constructors:
+
+- `ui::heading()`
+- `ui::label()`
+- `ui::button()`
+- `ui::searchBox()`
+- `ui::toggle()`
+
+They still produce plain allocation-free `ControlSpec` values; they simply
+centralize the default kind, style, focusability, and basis for common controls.
+
+Native windows use a shared `windowContent()` vertical Flow in `shell.cc`.
+The Flow starts below the 44 px title bar, applies content insets, and stacks
+semantic controls with a configurable gap.
+
+This means Launcher, Files, Settings, and Terminal no longer rely on the
+compositor's old `68 + index * 42` row placement.
+
 ## ABI v3
 
 Shell ABI v3 carries per-item:
@@ -119,8 +141,9 @@ Shell ABI v3 carries per-item:
 A zero-sized item still means legacy row layout, which lets Pippin migrate
 surfaces one at a time.
 
-Both the Dock and Panel now render and hit-test controls using rectangles
-calculated by C++. The compositor no longer owns their item placement.
+All built-in native shell surfaces now render and hit-test controls using
+rectangles calculated by C++. The old 42 px row math remains only as a
+compatibility fallback for legacy bridge-created surfaces.
 
 ## Interaction state
 
@@ -157,7 +180,8 @@ Keyboard behavior:
 - active external/client windows retain their own keyboard routing instead of
   having Tab intercepted by the shell
 
-The Dock and Panel are the first surfaces using this interaction model.
+The Dock, Panel, Launcher, Files, Settings, and Terminal all use this
+interaction model once visible.
 
 ## Why this boundary
 
@@ -174,9 +198,9 @@ the C++ shell moves fully into ring-3 ELF processes.
 
 The Control Manager should stay focused:
 
-1. move generic window rows/buttons away from hardcoded 42 px spacing
-2. add reusable group/proxy node composition instead of flat control arrays
-3. add focus scopes for individual windows/dialogs
-4. add richer pointer semantics such as activate-on-release and drag cancellation
+1. add reusable group/proxy node composition instead of flat control arrays
+2. add focus scopes for individual windows/dialogs
+3. add richer pointer semantics such as activate-on-release and drag cancellation
+4. add scrolling/content clipping for longer layouts
 5. once user apps can own surfaces directly, move this same C++ manager into the
    native app/toolkit layer

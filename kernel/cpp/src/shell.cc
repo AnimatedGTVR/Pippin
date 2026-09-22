@@ -21,10 +21,6 @@ constexpr pippin_shell_item shellItem(ui::Control const& control) {
     };
 }
 
-constexpr pippin_shell_item legacyItem(const char* text, const char* action, uint8_t kind) {
-    return {text, action, kind, PIPPIN_CONTROL_STYLE_PLAIN, 0, 0, 0, 0, 0};
-}
-
 constexpr ui::ControlSpec kPanelSpecs[] = {
     ui::cross(ui::fixed("Search", "launcher.open", 'b', ui::ControlStyle::SEARCH, 220), 34),
     ui::spacer(),
@@ -86,34 +82,100 @@ constexpr pippin_shell_item kDockItems[] = {
     shellItem(kDockControls[2]),
 };
 
-constexpr pippin_shell_item kLauncherItems[] = {
-    legacyItem("Applications", "", 'h'),
-    legacyItem("Search apps", "launcher.search", 's'),
-    legacyItem("Files", "files.open", 'b'),
-    legacyItem("Settings", "settings.open", 'b'),
-    legacyItem("Terminal", "terminal.open", 'b'),
+constexpr ui::Flow windowContent(int32_t width, int32_t height, int32_t gap = 10) {
+    return ui::inset(
+        ui::Flow{
+            .frame = {0, 44, width, height - 44},
+            .axis = ui::Axis::VERTICAL,
+            .gap = gap,
+        },
+        ui::Insets{20, 24, 20, 24}
+    );
+}
+
+constexpr ui::ControlSpec kLauncherSpecs[] = {
+    ui::heading("Applications"),
+    ui::searchBox("Search apps", "launcher.search"),
+    ui::button("Files", "files.open"),
+    ui::button("Settings", "settings.open"),
+    ui::button("Terminal", "terminal.open"),
 };
+
+constexpr auto kLauncherControls = ui::flow(
+    windowContent(500, 400),
+    kLauncherSpecs
+);
+
+constexpr pippin_shell_item kLauncherItems[] = {
+    shellItem(kLauncherControls[0]),
+    shellItem(kLauncherControls[1]),
+    shellItem(kLauncherControls[2]),
+    shellItem(kLauncherControls[3]),
+    shellItem(kLauncherControls[4]),
+};
+
+constexpr ui::ControlSpec kFilesSpecs[] = {
+    ui::heading("Home"),
+    ui::searchBox("Search files", "files.search"),
+    ui::button("Documents", "files.documents.open"),
+    ui::button("Downloads", "files.downloads.open"),
+};
+
+constexpr auto kFilesControls = ui::flow(
+    windowContent(620, 500),
+    kFilesSpecs
+);
 
 constexpr pippin_shell_item kFilesItems[] = {
-    legacyItem("Home", "", 'h'),
-    legacyItem("Search files", "files.search", 's'),
-    legacyItem("Documents", "files.documents.open", 'b'),
-    legacyItem("Downloads", "files.downloads.open", 'b'),
+    shellItem(kFilesControls[0]),
+    shellItem(kFilesControls[1]),
+    shellItem(kFilesControls[2]),
+    shellItem(kFilesControls[3]),
 };
+
+constexpr ui::ControlSpec kSettingsSpecs[] = {
+    ui::heading("Settings"),
+    ui::heading("Appearance", 26),
+    ui::toggle("Animations", "settings.animations.toggle"),
+    ui::heading("Desktop", 26),
+    ui::toggle("Show dock", "settings.dock.toggle"),
+};
+
+constexpr auto kSettingsControls = ui::flow(
+    windowContent(520, 430),
+    kSettingsSpecs
+);
 
 constexpr pippin_shell_item kSettingsItems[] = {
-    legacyItem("Settings", "", 'h'),
-    legacyItem("Appearance", "", 'h'),
-    legacyItem("Animations", "settings.animations.toggle", 't'),
-    legacyItem("Desktop", "", 'h'),
-    legacyItem("Show dock", "settings.dock.toggle", 't'),
+    shellItem(kSettingsControls[0]),
+    shellItem(kSettingsControls[1]),
+    shellItem(kSettingsControls[2]),
+    shellItem(kSettingsControls[3]),
+    shellItem(kSettingsControls[4]),
 };
 
-constexpr pippin_shell_item kTerminalItems[] = {
-    legacyItem("Pippin Terminal", "", 'h'),
-    legacyItem("Native C++ shell online.", "", 'l'),
-    legacyItem("pippin> ", "terminal.input", 's'),
+constexpr ui::ControlSpec kTerminalSpecs[] = {
+    ui::heading("Pippin Terminal"),
+    ui::label("Native C++ shell online."),
+    ui::searchBox("pippin> ", "terminal.input"),
 };
+
+constexpr auto kTerminalControls = ui::flow(
+    windowContent(640, 420),
+    kTerminalSpecs
+);
+
+constexpr pippin_shell_item kTerminalItems[] = {
+    shellItem(kTerminalControls[0]),
+    shellItem(kTerminalControls[1]),
+    shellItem(kTerminalControls[2]),
+};
+
+static_assert(kLauncherControls[0].frame.y == 64);
+static_assert(kLauncherControls[1].frame.y == 104);
+static_assert(kFilesControls[1].frame.width == 572);
+static_assert(kSettingsControls[2].frame.width == 472);
+static_assert(kTerminalControls[2].frame.width == 592);
 
 constexpr pippin_shell_surface kSurfaces[] = {
     {

@@ -161,6 +161,31 @@ constexpr ControlSpec spacer(uint8_t growWeight = 1) {
     return grow("", "", 0, ControlStyle::PLAIN, growWeight);
 }
 
+// Small semantic constructors. These keep shell definitions readable while
+// still compiling down to the same allocation-free ControlSpec data.
+constexpr ControlSpec heading(const char* text, int32_t basis = 30) {
+    return fixed(text, "", 'h', ControlStyle::PLAIN, basis);
+}
+
+constexpr ControlSpec label(const char* text, int32_t basis = 28) {
+    return fixed(text, "", 'l', ControlStyle::PLAIN, basis);
+}
+
+constexpr ControlSpec button(const char* text, const char* action,
+                             int32_t basis = 38) {
+    return fixed(text, action, 'b', ControlStyle::SUBTLE, basis);
+}
+
+constexpr ControlSpec searchBox(const char* text, const char* action,
+                                int32_t basis = 38) {
+    return fixed(text, action, 's', ControlStyle::SEARCH, basis);
+}
+
+constexpr ControlSpec toggle(const char* text, const char* action,
+                             int32_t basis = 38) {
+    return fixed(text, action, 't', ControlStyle::SUBTLE, basis);
+}
+
 constexpr ControlSpec disabled(ControlSpec spec) {
     spec.flags |= CONTROL_DISABLED;
     spec.flags &= static_cast<uint8_t>(~CONTROL_FOCUSABLE);
