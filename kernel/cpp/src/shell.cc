@@ -20,10 +20,14 @@ constexpr pippin_shell_item shellItem(ui::Control const& control) {
     };
 }
 
+constexpr pippin_shell_item legacyItem(const char* text, const char* action, uint8_t kind) {
+    return {text, action, kind, PIPPIN_CONTROL_STYLE_PLAIN, 0, 0, 0, 0};
+}
+
 constexpr pippin_shell_item kPanelItems[] = {
-    {"Search", "launcher.open", 'b'},
-    {"Pippin", "", 'l'},
-    {"WiFi  Vol  Bat", "settings.open", 'b'},
+    legacyItem("Search", "launcher.open", 'b'),
+    legacyItem("Pippin", "", 'l'),
+    legacyItem("WiFi  Vol  Bat", "settings.open", 'b'),
 };
 
 constexpr ui::ControlSpec kDockSpecs[] = {
@@ -53,32 +57,32 @@ constexpr pippin_shell_item kDockItems[] = {
 };
 
 constexpr pippin_shell_item kLauncherItems[] = {
-    {"Applications", "", 'h'},
-    {"Search apps", "launcher.search", 's'},
-    {"Files", "files.open", 'b'},
-    {"Settings", "settings.open", 'b'},
-    {"Terminal", "terminal.open", 'b'},
+    legacyItem("Applications", "", 'h'),
+    legacyItem("Search apps", "launcher.search", 's'),
+    legacyItem("Files", "files.open", 'b'),
+    legacyItem("Settings", "settings.open", 'b'),
+    legacyItem("Terminal", "terminal.open", 'b'),
 };
 
 constexpr pippin_shell_item kFilesItems[] = {
-    {"Home", "", 'h'},
-    {"Search files", "files.search", 's'},
-    {"Documents", "files.documents.open", 'b'},
-    {"Downloads", "files.downloads.open", 'b'},
+    legacyItem("Home", "", 'h'),
+    legacyItem("Search files", "files.search", 's'),
+    legacyItem("Documents", "files.documents.open", 'b'),
+    legacyItem("Downloads", "files.downloads.open", 'b'),
 };
 
 constexpr pippin_shell_item kSettingsItems[] = {
-    {"Settings", "", 'h'},
-    {"Appearance", "", 'h'},
-    {"Animations", "settings.animations.toggle", 't'},
-    {"Desktop", "", 'h'},
-    {"Show dock", "settings.dock.toggle", 't'},
+    legacyItem("Settings", "", 'h'),
+    legacyItem("Appearance", "", 'h'),
+    legacyItem("Animations", "settings.animations.toggle", 't'),
+    legacyItem("Desktop", "", 'h'),
+    legacyItem("Show dock", "settings.dock.toggle", 't'),
 };
 
 constexpr pippin_shell_item kTerminalItems[] = {
-    {"Pippin Terminal", "", 'h'},
-    {"Native C++ shell online.", "", 'l'},
-    {"pippin> ", "terminal.input", 's'},
+    legacyItem("Pippin Terminal", "", 'h'),
+    legacyItem("Native C++ shell online.", "", 'l'),
+    legacyItem("pippin> ", "terminal.input", 's'),
 };
 
 constexpr pippin_shell_surface kSurfaces[] = {
