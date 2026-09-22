@@ -147,7 +147,7 @@ impl Compositor {
                 }
 
                 let mut rows = Vec::new();
-                for raw in surface.items.iter().take(8) {
+                for raw in surface.items.iter().take(16) {
                     let item = ffi::shell_item(raw);
                     rows.push(Row {
                         text: item.text.to_string(),
