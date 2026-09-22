@@ -66,6 +66,8 @@ struct Mapping {
     phys: u64,
 }
 
+static mut ACTIVE_MAPPINGS: Option<Vec<Mapping>> = None;
+
 fn le16(bytes: &[u8], at: usize) -> Option<u16> {
     let end = at.checked_add(2)?;
     Some(u16::from_le_bytes(bytes.get(at..end)?.try_into().ok()?))
@@ -189,7 +191,32 @@ fn parse_segments(image: &[u8]) -> Result<(u64, Vec<Segment>), LoadError> {
     Ok((entry, segments))
 }
 
+fn release_finished_app() -> Result<(), LoadError> {
+    unsafe {
+        if ACTIVE_MAPPINGS.is_some() {
+            if !sched::task_dead(3) {
+                return Err(LoadError::SchedulerBusy);
+            }
+            if let Some(old) = ACTIVE_MAPPINGS.take() {
+                rollback(&old);
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn reap_if_exited() {
+    unsafe {
+        if ACTIVE_MAPPINGS.is_some() && sched::task_dead(3) {
+            if let Some(old) = ACTIVE_MAPPINGS.take() {
+                rollback(&old);
+            }
+        }
+    }
+}
+
 pub fn load_and_spawn(image: &[u8], event_port: u16) -> Result<LoadReport, LoadError> {
+    release_finished_app()?;
     let (entry, segments) = parse_segments(image)?;
     let mut mappings = Vec::new();
 
@@ -245,9 +272,12 @@ pub fn load_and_spawn(image: &[u8], event_port: u16) -> Result<LoadReport, LoadE
         return Err(LoadError::SchedulerBusy);
     }
 
+    let mapped_pages = mappings.len();
+    unsafe { ACTIVE_MAPPINGS = Some(mappings); }
+
     Ok(LoadReport {
         entry,
-        mapped_pages: mappings.len(),
+        mapped_pages,
         image_bytes: image.len(),
     })
 }
