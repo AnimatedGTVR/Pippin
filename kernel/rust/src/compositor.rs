@@ -36,6 +36,7 @@ struct Window {
     rows: Vec<Row>,
     native: bool,
     maximized: bool,
+    minimized: bool,
     restore: Option<(i32, i32, i32, i32)>,
 }
 
@@ -74,7 +75,7 @@ impl Compositor {
             width: 440, height: 300, title: "WINDOW TEST".to_string(),
             rows: vec![Row { text: "RUST COMPOSITOR".to_string(), action: String::new(), kind: b'l' },
                        Row { text: "DRAG TITLE BAR".to_string(), action: String::new(), kind: b'l' }],
-            native: true, maximized: false, restore: None,
+            native: true, maximized: false, minimized: false, restore: None,
         });
         self.next_id = self.next_id.wrapping_add(1).max(1);
         self.render();
@@ -82,6 +83,15 @@ impl Compositor {
 
     /// A bounded host command: S|id|role|x|y|w|h|title|text@action;...
     pub fn command(&mut self, line: &str) {
+        if let Some(id) = line.strip_prefix("R|") {
+            if let Some(index) = self.windows.iter().position(|window| window.id == id) {
+                let mut window = self.windows.remove(index);
+                window.minimized = false;
+                self.windows.push(window);
+                self.render();
+            }
+            return;
+        }
         if let Some(id) = line.strip_prefix("X|") {
             self.windows.retain(|window| window.id != id);
             if id == "wallpaper" { self.wallpaper_base = 0x00142b42; }
@@ -121,7 +131,7 @@ impl Compositor {
         if self.windows.len() >= MAX_WINDOWS { return; }
         self.windows.push(Window { id: id.to_string(), role, x, y, width, height,
                                    title: title.to_string(), rows: parsed_rows, native: false,
-                                   maximized: false, restore: None });
+                                   maximized: false, minimized: false, restore: None });
         self.render();
     }
 
@@ -165,7 +175,7 @@ impl Compositor {
 
     fn press(&mut self) -> Option<String> {
         let Some(index) = self.windows.iter().rposition(|window| {
-            self.cursor_x >= window.x && self.cursor_x < window.x + window.width
+            !window.minimized && self.cursor_x >= window.x && self.cursor_x < window.x + window.width
                 && self.cursor_y >= window.y && self.cursor_y < window.y + window.height
         }) else { return None; };
         let mut window = self.windows.remove(index);
@@ -175,9 +185,9 @@ impl Compositor {
                 return if window.native { None } else { Some(alloc::format!("{}.close", window.id)) };
             }
             if (29..47).contains(&control) {
-                let id = window.id.clone();
+                window.minimized = true;
                 self.windows.push(window);
-                return if id.starts_with("native") { None } else { Some(alloc::format!("{}.close", id)) };
+                return None;
             }
             if (58..76).contains(&control) {
                 if window.maximized {
@@ -219,9 +229,11 @@ impl Compositor {
 
     fn render(&mut self) {
         self.wallpaper();
-        let focused = self.windows.len().checked_sub(1);
+        let focused = self.windows.iter().rposition(|window| !window.minimized);
         for index in 0..self.windows.len() {
-            self.window(self.windows[index].clone(), focused == Some(index));
+            if !self.windows[index].minimized {
+                self.window(self.windows[index].clone(), focused == Some(index));
+            }
         }
         self.clients.paint(&mut self.pixels);
         self.cursor();
