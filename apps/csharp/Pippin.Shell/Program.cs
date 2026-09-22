@@ -78,6 +78,16 @@ public sealed class Files : Application
                     UiNode.Label("Downloads"))))];
 }
 
+public sealed class TerminalApp : Application
+{
+    public override string Id => "org.pippin.terminal";
+    public override IEnumerable<Surface> CreateSurfaces() =>
+        [new("terminal", SurfaceRole.AppWindow, "Terminal", 190, 130, 640, 420,
+            UiNode.Column(UiNode.Heading("Pippin Terminal"),
+                UiNode.Label("pippin> ready"),
+                UiNode.Label("Alt+T opens this terminal")))];
+}
+
 public sealed class Notifications : Application
 {
     public override string Id => "org.pippin.notifications";
@@ -91,7 +101,7 @@ public static class Program
     public static async Task Main(string[] args)
     {
         Application[] clients = [new Wallpaper(), new Panel(), new Dock(),
-            new Launcher(), new Settings(), new Files(), new Notifications()];
+            new Launcher(), new Settings(), new Files(), new TerminalApp(), new Notifications()];
         if (args is ["--bridge", var path])
         {
             await new HostBridge(path, clients).RunAsync();
@@ -171,6 +181,7 @@ internal sealed class HostBridge(string socketPath, Application[] clients)
             case "launcher.open": await ShowAsync("launcher"); break;
             case "settings.open": await ShowAsync("settings"); break;
             case "files.open": await ShowAsync("files"); break;
+            case "terminal.open": await ShowAsync("terminal"); break;
             case "launcher.restore": await RestoreOrShowAsync("launcher"); break;
             case "settings.restore": await RestoreOrShowAsync("settings"); break;
             case "files.restore": await RestoreOrShowAsync("files"); break;
