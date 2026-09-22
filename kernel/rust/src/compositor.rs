@@ -147,7 +147,7 @@ impl Compositor {
         compositor
     }
 
-    /// Native test window. Future C# clients will request windows via IPC.
+    /// Native compositor test window. Real apps request windows through the window protocol.
     pub fn open_test_window(&mut self) {
         if self.windows.len() == MAX_WINDOWS { return; }
         let offset = self.windows.len() as i32 * 28;
@@ -894,7 +894,7 @@ impl Compositor {
     }
 }
 
-/// Built-in capitals for the native bootstrap window. C# clients own UI text.
+/// Built-in capitals for the native bootstrap shell and compositor windows.
 pub(crate) fn glyph(byte: u8) -> [u8; 7] {
     match byte {
         b'A' => [14, 17, 17, 31, 17, 17, 17],
