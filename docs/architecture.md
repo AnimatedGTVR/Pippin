@@ -56,6 +56,12 @@ supported target toolchain, a clear build path, and an explicit boundary to
 the rest of Pippin (usually the Toolbox C ABI). Mentioning a language here
 does not commit it to a milestone.
 
+**Vanta is a candidate application language.** Once it can produce code for
+Pippin's target and call the Toolbox ABI, it could support native GUI apps and
+small system utilities. Its current Rust interpreter uses host file, process,
+and environment APIs, so running it inside Pippin would require those services
+and a port. Vanta is not part of the boot or kernel path today.
+
 Future note — **68k**: the planned Motorola 68k port keeps Assembly + Rust + C++
 (kernel) and C++ (drivers), with a C++ and Rust desktop. Optional C# app support
 does not follow to 68k.

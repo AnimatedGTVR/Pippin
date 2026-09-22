@@ -12,4 +12,6 @@ this order:
 
 C# is an optional application language, not a dependency of the desktop shell
 or kernel. It is out of scope for the current kernel milestone and the 68k port.
+Vanta is another candidate for native apps and utilities once its compiler can
+target Pippin and use the Toolbox ABI; it has no scheduled milestone yet.
 See docs/gui.md and docs/architecture.md (§ Application layer).
