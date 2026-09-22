@@ -7,6 +7,7 @@
 use core::fmt::Write;
 use core::sync::atomic::{AtomicU64, Ordering};
 
+use crate::apic;
 use crate::cpu;
 use crate::idt;
 use crate::serial;
@@ -135,9 +136,16 @@ pub unsafe extern "C" fn pippin_int_dispatch(frame: *mut idt::IntFrame) {
         0..=31 => fault(vector, &*frame),
         // System timer.
         32 => {
-            TICKS.fetch_add(1, Ordering::Relaxed);
+            if !apic::active() {
+                TICKS.fetch_add(1, Ordering::Relaxed);
+            }
             pic_eoi(0);
         }
+        0x30 => {
+            TICKS.fetch_add(1, Ordering::Relaxed);
+            apic::eoi();
+        }
+        0xFF => {} // local APIC spurious vector needs no EOI
         // Remaining hardware IRQs: unmapped for now, log + ack.
         33..=47 => {
             let irq = vector - 32;

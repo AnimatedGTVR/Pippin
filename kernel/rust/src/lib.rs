@@ -20,7 +20,9 @@
 extern crate alloc;
 
 mod cpu;
+mod apic;
 mod ffi;
+mod gdt;
 mod heap;
 mod idt;
 mod interrupts;
@@ -46,17 +48,31 @@ static ALLOCATOR: heap::HeapAllocator = heap::HeapAllocator;
 /// This function must not return; it drops into the idle loop.
 #[no_mangle]
 pub extern "C" fn pippin_core_main(mb_info: u32) -> ! {
+    core_main(Some(mb_info))
+}
+
+#[no_mangle]
+pub extern "C" fn pippin_core_main_limine() -> ! {
+    core_main(None)
+}
+
+fn core_main(mb_info: Option<u32>) -> ! {
     serial::init(0x3F8);
     let mut console: serial::Console = serial::stdout();
 
     let _ = writeln!(console, "Pippin kernel core [rust] booting...");
-    let _ = writeln!(console, "  multiboot info:     {:#010x}", mb_info);
-    let _ = writeln!(console, "  upper memory:       {} KiB", mem::multiboot_upper_memory(mb_info) / 1024);
+    match mb_info {
+        Some(info) => {
+            let _ = writeln!(console, "  boot:              Multiboot info at {info:#010x}");
+            let _ = writeln!(console, "  upper memory:      {} KiB", mem::multiboot_upper_memory(info) / 1024);
+        }
+        None => { let _ = writeln!(console, "  boot:              Limine protocol"); }
+    }
     let _ = writeln!(console, "  C++ runtime says:   {}", ffi::cpp_version());
     let _ = writeln!(console, "  drivers registered: {}", ffi::driver_count());
 
     // Memory manager bootstrap (frame allocator over the bootloader's map).
-    let report = unsafe { mem::init(mb_info) };
+    let report = unsafe { match mb_info { Some(info) => mem::init(info), None => mem::init_limine() } };
     let _ = writeln!(console, "  mem map:            {}", report);
     if let Some(phys) = mem::alloc_zeroed_frame() {
         let _ = writeln!(console, "  frame sample:       {:#x} allocated, {} frames free", phys, mem::free_frame_count());
@@ -72,11 +88,15 @@ pub extern "C" fn pippin_core_main(mb_info: u32) -> ! {
     // boot.S already hopped us there over its 2 MiB map; drop in real 4 KiB
     // page tables from here.
     let _ = writeln!(console, "  mm:              higher-half bss end @ {:#x}", mem::kernel_bss_end_vma());
-    if let Some(report) = mm::install_initial() {
-        let _ = writeln!(console, "  mm:              4K page tables: PML4={:#x}, {} frames used", report.pml4_phys, report.page_table_frames);
-        let _ = writeln!(console, "  mm:              cr3={:#x}", cpu::read_cr3());
+    if mb_info.is_some() {
+        if let Some(report) = mm::install_initial() {
+            let _ = writeln!(console, "  mm:              4K page tables: PML4={:#x}, {} frames used", report.pml4_phys, report.page_table_frames);
+            let _ = writeln!(console, "  mm:              cr3={:#x}", cpu::read_cr3());
+        } else {
+            let _ = writeln!(console, "  mm:              page-table install FAILED");
+        }
     } else {
-        let _ = writeln!(console, "  mm:              page-table install FAILED");
+        let _ = writeln!(console, "  mm:              Limine page tables: cr3={:#x}", cpu::read_cr3());
     }
 
     // Zone heap bootstrap, then prove the allocator with real workload.
@@ -92,6 +112,10 @@ pub extern "C" fn pippin_core_main(mb_info: u32) -> ! {
     let boxed: Box<u16> = Box::new(0xCAFE);
     let _ = writeln!(console, "  heap:              {} \"{}\" box={:#x}", vec.len(), hello, *boxed);
 
+    // Install the kernel GDT/TSS before the IDT uses its double-fault IST.
+    unsafe { gdt::init() };
+    let _ = writeln!(console, "  gdt:              TSS loaded, double-fault IST ready");
+
     // Interrupt subsystem: IDT + PIC + PIT (1000 Hz), then prove it.
     let _ = writeln!(console, "  int:              building IDT/PIC/PIT...");
     unsafe { interrupts::init() };
@@ -99,6 +123,12 @@ pub extern "C" fn pippin_core_main(mb_info: u32) -> ! {
 
     unsafe { core::arch::asm!("int3"); }
     let _ = writeln!(console, "  int:              resumed past int3");
+
+    if unsafe { apic::init_timer(mb_info.is_some()) } {
+        let _ = writeln!(console, "  apic:             periodic timer active at 1000 Hz");
+    } else {
+        let _ = writeln!(console, "  apic:             unavailable; PIT timer retained");
+    }
 
     let t0 = interrupts::ticks();
     interrupts::sleep_ms(250);

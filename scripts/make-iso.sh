@@ -1,40 +1,28 @@
 #!/usr/bin/env bash
-# Build a bootable Pippin ISO using the Limine bootloader.
-#
-# Not required yet: the primary dev loop is `qemu-system-x86_64 -kernel
-# build/kernel.elf` (Multiboot). Once the kernel moves to the Limine
-# protocol (Milestone 1, docs/boot.md) this script becomes the release path.
-#
-# Prerequisites: `limine` (https://limine-bootloader.org) and `xorriso`.
+# Build a BIOS/UEFI hybrid ISO around the Limine protocol kernel.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ISO_DIR="$ROOT/build/iso-root"
-BOOT_DIR="$ISO_DIR/boot"
+LIMINE_DIR="${LIMINE_DIR:-/usr/local/share/limine}"
 LIMINE_BIN="${LIMINE_BIN:-limine}"
 XORRISO_BIN="${XORRISO_BIN:-xorriso}"
 
-command -v "$LIMINE_BIN"   >/dev/null || { echo "limine not found" >&2; exit 1; }
-command -v "$XORRISO_BIN"  >/dev/null || { echo "xorriso not found" >&2; exit 1; }
-[[ -f "$ROOT/build/kernel.elf" ]] || { echo "run 'make' first" >&2; exit 1; }
+command -v "$LIMINE_BIN" >/dev/null || { echo "limine installer not found: $LIMINE_BIN" >&2; exit 1; }
+command -v "$XORRISO_BIN" >/dev/null || { echo "xorriso not found: $XORRISO_BIN" >&2; exit 1; }
+[[ -f "$ROOT/build/kernel-limine.elf" ]] || { echo "run 'make iso' to build the Limine kernel" >&2; exit 1; }
 
-mkdir -p "$BOOT_DIR" "$BOOT_DIR/limine"
-cp "$ROOT/build/kernel.elf"    "$BOOT_DIR/pippin.elf"
-cp "$ROOT/boot/limine.conf"    "$BOOT_DIR/limine.conf"
-cp "$LIMINE_BIN.bin"        "$BOOT_DIR/limine/limine-bios.bin"     2>/dev/null || true
-cp "$LIMINE_BIN-bios.sys"   "$BOOT_DIR/limine/limine-bios.sys"    2>/dev/null || true
-cp "$LIMINE_BIN-bios-cd.bin" "$BOOT_DIR/limine/limine-bios-cd.bin" 2>/dev/null || true
-cp "$LIMINE_BIN-uefi-cd.bin" "$BOOT_DIR/limine/limine-uefi-cd.bin" 2>/dev/null || true
+mkdir -p "$ISO_DIR/boot" "$ISO_DIR/EFI/BOOT"
+cp "$ROOT/build/kernel-limine.elf" "$ISO_DIR/boot/kernel-limine.elf"
+cp "$ROOT/boot/limine.conf" "$ISO_DIR/boot/limine.conf"
+cp "$LIMINE_DIR/limine-bios.sys" "$ISO_DIR/boot/limine-bios.sys"
+cp "$LIMINE_DIR/limine-bios-cd.bin" "$ISO_DIR/boot/limine-bios-cd.bin"
+cp "$LIMINE_DIR/limine-uefi-cd.bin" "$ISO_DIR/boot/limine-uefi-cd.bin"
+cp "$LIMINE_DIR/BOOTX64.EFI" "$ISO_DIR/EFI/BOOT/BOOTX64.EFI"
 
-# x86-64 EFI runtime is forward-compat; see docs/boot.md.
-mkdir -p "$BOOT_DIR/limine/EFI/BOOT"
-cp "$LIMINE_BIN-uefi/BOOTX64.EFI" "$BOOT_DIR/limine/EFI/BOOT/BOOTX64.EFI" 2>/dev/null || true
-
-"$XORRISO_BIN" -as mkisofs -b boot/limine/limine-bios-cd.bin \
-    -no-emul-boot -boot-load-size 4 -boot-info-table \
-    --efi-boot boot/limine/limine-uefi-cd.bin \
-    -efi-boot-part --efi-boot-image --protective-msdos-label \
-    "$ISO_DIR" -o "$ROOT/build/pippin.iso"
-
+"$XORRISO_BIN" -as mkisofs -R -r -J \
+    -b boot/limine-bios-cd.bin -no-emul-boot -boot-load-size 4 -boot-info-table \
+    --efi-boot boot/limine-uefi-cd.bin -efi-boot-part --efi-boot-image \
+    --protective-msdos-label "$ISO_DIR" -o "$ROOT/build/pippin.iso"
 "$LIMINE_BIN" bios-install "$ROOT/build/pippin.iso"
-echo "ISO: build/pippin.iso (boot with: qemu-system-x86_64 -cdrom build/pippin.iso)"
+echo "ISO: build/pippin.iso"

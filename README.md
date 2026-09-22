@@ -8,8 +8,8 @@ drivers, a **C++ and Rust** desktop, optional **C#** applications later, and
 These are the current choices, not a limit on Pippin's languages. Other
 languages can join when a subsystem or application benefits from them.
 
-> **Milestone 0 is complete; Milestone 1 is in progress.** The kernel builds and
-> boots under QEMU, with memory management and timer interrupts underway. See
+> **Milestones 0 and 1 are complete.** The kernel boots under QEMU through
+> Multiboot or a Limine ISO, with memory management and timer interrupts. See
 > [docs/milestones.md](docs/milestones.md).
 
 ## What is here
@@ -22,25 +22,25 @@ languages can join when a subsystem or application benefits from them.
 | `kernel/cpp/`                    | C++ kernel runtime / entry                           |
 | `kernel/c/`                      | C glue: libc-style stubs used by C++ and Rust        |
 | `drivers/cpp/`                   | C++ driver layer (PCI stub today)                    |
-| `boot/`                          | Bootloader config (Limine, for the later migration)  |
+| `boot/`                          | Limine bootloader config                              |
 | `apps/`                          | Future application layer (C++ and Rust; optional C#) |
 | `scripts/`                       | Shell glue for QEMU / ISO workflows                  |
 
 ## Build
 
 Requirements: `cmake >= 3.20`, a freestanding-capable `gcc`/`g++` (>= 13), `rustc`/`cargo`
-with a host target, `make`, and optional `qemu-system-x86_64` to run it.
+with the `x86_64-unknown-none` target, `make`, and optional `qemu-system-x86_64`
+to run it. `make iso` also needs Limine and `xorriso`.
 
 ```sh
 make                # configure + build build/kernel.elf
 make run            # boot it in QEMU (serial console)
 make run-gdb        # boot under QEMU with a GDB stub on :1234
+make iso            # build the Limine BIOS/UEFI ISO
 make clean
 ```
 
-See [docs/build.md](docs/build.md) for the full toolchain story, why the Rust crate is
-currently a host-target `no_std` staticlib, and how to move to a dedicated
-`x86_64-unknown-none` target.
+See [docs/build.md](docs/build.md) for the full toolchain and ISO setup.
 
 ## Design in one paragraph
 
@@ -56,7 +56,7 @@ connect build, image, and emulator steps on the development host.
 ## Roadmap
 
 - **M0 — Skeleton (complete):** multi-language build wired end-to-end, boots in QEMU.
-- **M1 — Core:** higher-half paging, interrupts/GDT/IDT, real frame + heap allocators.
+- **M1 — Core (complete):** higher-half paging, GDT/TSS/IDT, frame and heap allocators, APIC timer, Limine ISO.
 - **M2 — Processes:** scheduler, syscall ABI, IPC ports.
 - **M3 — Drivers:** ACPI/PCI, PS/2, VESA framebuffer, disk.
 - **M4 — GUI:** compositor, window/menu/control managers, retro desktop.

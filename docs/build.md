@@ -1,9 +1,9 @@
 # Build
 
-One build, one artifact: `build/kernel.elf` — a Multiboot kernel ELF mixing
-Assembly, Rust, C++, C and driver C++ sources. Everything is driven by CMake
-with a convenience `Makefile` on top. Shell scripts connect the image and QEMU
-steps on the development host.
+Pippin builds two kernel ELFs from the same Rust core and C/C++ libraries:
+`build/kernel.elf` for the direct QEMU Multiboot path and
+`build/kernel-limine.elf` for the Limine protocol ISO. CMake drives both links;
+the Makefile and shell scripts run the build, image, and emulator steps.
 
 ## Toolchain
 
@@ -13,24 +13,28 @@ This mandatory set, in the form installed on the current machine:
 |-----------------|----------------------|---------------------------------|
 | `cmake`         | 3.28                 | build orchestration             |
 | `gcc`/`g++`     | 13.3                 | C, C++, and preprocessing `.S`  |
-| `rustc`/`cargo` | 1.95 (stable)        | Rust kernel core (`no_std`)     |
+| `rustc`/`cargo` | stable with `x86_64-unknown-none` | freestanding Rust core |
 | GNU `as`/`ld`   | binutils 2.42        | in-built assembler, final link  |
 | `make`          | 4.3                  | top-level targets               |
 | `bash`          | host shell           | QEMU and ISO helper scripts     |
 | `qemu-system-x86_64` | 8.2 (optional)  | boot the OS without real HW     |
+| Limine + `xorriso` | Limine 12.9 / xorriso 1.5.6 tested | hybrid BIOS/UEFI ISO |
 
 `gcc` is used both as the C/C++ compiler and as the assembler driver
 (`CMAKE_ASM_COMPILER` is pinned to it in the root `CMakeLists.txt`), so `.S`
 files get preprocessed for free — no separate `nasm` needed. `clang` is not
-required. Networking is not required to build (see the Rust note below).
+required. Install the Rust target once with
+`rustup target add x86_64-unknown-none`. Networking is not needed for later
+builds.
 
 ## Building
 
 ```sh
-make            # configure + compile everything -> build/kernel.elf
-make run        # boot in QEMU, serial console to your terminal
+make            # configure + compile build/kernel.elf (Multiboot)
+make run        # direct Multiboot boot in QEMU, serial to terminal
 make run-gdb    # QEMU paused, GDB stub on :1234
-make iso        # build a Limine ISO (needs limine + xorriso; Milestone 1+)
+make iso        # build build/kernel-limine.elf and build/pippin.iso
+qemu-system-x86_64 -machine q35 -m 256M -display none -serial stdio -cdrom build/pippin.iso
 make clean      # rm build/
 make distclean  # also wipe the cargo target dir
 ```
@@ -53,9 +57,9 @@ qemu-system-x86_64 -machine q35 -m 256M -display none -serial stdio \
    in a custom command/target (`rust-kernel`) and feeds the archive to the
    final link.
 3. **C++ + C + drivers** — ordinary CMake `STATIC` libraries.
-4. **Final link** (`kernel/CMakeLists.txt`) — one `ld` pass with
+4. **Final links** (`kernel/CMakeLists.txt`) — each image uses one `ld` pass with
    - `-nostdlib`, `-no-pie` (plain `ET_EXEC`, required for Multiboot),
-   - the linker script `kernel/linker.ld`,
+   - `kernel/linker.ld` for Multiboot or `kernel/limine-linker.ld` for Limine,
    - all archives wrapped in `-Wl,--start-group/--end-group` because they
      reference each other in both directions (Rust ↔ C++ ↔ drivers),
    - `--gc-sections` (paired with `-ffunction-sections`) to drop dead code.
@@ -63,27 +67,25 @@ qemu-system-x86_64 -machine q35 -m 256M -display none -serial stdio \
    image creation after the ELF is built. These scripts run on the host and do
    not add shell code to the kernel or application runtime.
 
-### Rust: why the host target?
+### Freestanding Rust target
 
-This machine ships rustc via the distro package with only the host target's
-`std` — no `rustup`, so no `x86_64-unknown-none` prebuilts and no `-Zbuild-std`.
-The crate therefore builds `#![no_std]` **against the host target**
-(`x86_64-unknown-linux-gnu`, pinned in `kernel/rust/.cargo/config.toml`) while
-never referencing `std`. It links cleanly because the final ELF uses
-`-nostdlib`.
+`kernel/rust/.cargo/config.toml` selects `x86_64-unknown-none`, static
+relocations, and the large code model. The root `CMakeLists.txt` names the same
+target directory when it links the Rust static library. Both kernel images
+share that library. The source remains `#![no_std]` and dependency-free.
 
-The intended production setup is a freestanding target. Two options:
+The Multiboot trampoline enables SSE before Rust starts; Limine hands off with
+SSE available. Kernel code still avoids floating point until the scheduler
+can save task FP state.
 
-- `rustup target add x86_64-unknown-none` (built-in, prebuilt `core`) — the
-  least friction once rustup exists;
-- a custom JSON target spec + nightly `-Zbuild-std` when we need precise
-  control (e.g. `-mcmodel=kernel` for the higher-half remap).
+### Limine ISO prerequisites
 
-Because `x86_64-unknown-linux-gnu` is an ABI-carrying target, LLVM may emit
-SSE/AVX instructions — this is fine and expected; CR4.OSFXSR is set at boot
-([boot.md](boot.md)). When we move to a freestanding target,
-`kernel/rust/.cargo/config.toml` and the `PIPPIN_RUST_TARGET_SUBDIR` variable
-in the root `CMakeLists.txt` must both change together.
+Install Limine's BIOS/UEFI assets and `limine` installer, plus `xorriso`.
+`scripts/make-iso.sh` reads Limine assets from `/usr/local/share/limine` by
+default. Set `LIMINE_DIR`, `LIMINE_BIN`, and `XORRISO_BIN` to use other paths.
+The tested setup used the Limine 12.9.0 binary release. `make iso` builds the
+Limine ELF, stages the files, creates the hybrid ISO, and runs `limine
+bios-install`.
 
 ## Reproducible detail: QEMU and the Multiboot address fields
 

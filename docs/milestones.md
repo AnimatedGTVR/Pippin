@@ -1,7 +1,7 @@
 # Milestones
 
-Each milestone leaves the system running in QEMU. "Done" means the checkboxes
-in `make run` output and hold steady.
+Each milestone leaves the system running in QEMU. M0 and the Multiboot M1 path
+use `make run`; the Limine M1 path uses `make iso` and boots the ISO in QEMU.
 
 ## M0 — Skeleton (complete) ✅
 
@@ -15,20 +15,19 @@ in `make run` output and hold steady.
 - [x] C glue provides `memset`/`memcpy`/`memmove`/`memcmp`/`strlen`
 - [x] 68k: long-range plan only (no code)
 
-## M1 — Core (in progress)
+## M1 — Core (complete) ✅
 
 - [x] Higher-half remap (`0xFFFF800000000000+`), real 4 KiB page tables
 - [x] Physical frame allocator (bitmap over the bootloader memory map)
 - [x] Zone heap: `#[global_allocator]` backing `Box`/`Vec` in the Rust core
 - [x] Full IDT and Rust interrupt dispatcher; serial keeps working
-- [ ] GDT/TSS for later task and privilege transitions
+- [x] GDT/TSS for later task and privilege transitions
 - [x] PIT timer and basic tick-based sleep
-- [ ] APIC timer support
-- [ ] Migrate boot protocol to Limine (`boot/limine.conf`,
+- [x] APIC timer support
+- [x] Add a Limine protocol boot path (`boot/limine.conf`,
       `scripts/make-iso.sh`); `make iso` produces a bootable image
-- [ ] Switch Rust to a freestanding target (`x86_64-unknown-none` via rustup,
-      or custom JSON + `-Zbuild-std`); update `.cargo/config.toml` + CMake
-      `PIPPIN_RUST_TARGET_SUBDIR` in the same change
+- [x] Switch Rust to the freestanding `x86_64-unknown-none` target and update
+      `.cargo/config.toml` + CMake `PIPPIN_RUST_TARGET_SUBDIR` together
 
 ## M2 — Processes & IPC
 

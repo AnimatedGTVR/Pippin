@@ -30,8 +30,9 @@ pub const HIGHER_HALF_BASE: u64 = 0xFFFF_8000_0000_0000;
 /// Wavelength of a frame: 4 KiB.
 pub const FRAME_SIZE: u64 = PAGE_SIZE;
 
-/// Frames we can address with a 4 GiB address space.
-pub const MAX_FRAMES: usize = 1 << 20; // 4 GiB / 4 KiB
+/// Frames inside the initial 1 GiB identity map. The allocator must never
+/// hand out physical memory that the kernel cannot yet address directly.
+pub const MAX_FRAMES: usize = (BOOT_MAPPED_END / FRAME_SIZE) as usize;
 
 const BITMAP_WORDS: usize = MAX_FRAMES / 64;
 
@@ -193,8 +194,13 @@ fn bit_set(frame: usize, used: bool) {
 
 /// Mark `[base, base+len)` frames as used or free (clamped to MAX_FRAMES).
 fn paint_range(base: u64, len: u64, used: bool) {
-    let first = frame_index(base).max(1); // frame 0 stays reserved
-    let last = frame_index(base + len).min(MAX_FRAMES - 1);
+    // Free only whole usable frames; reserve every frame touched by a used
+    // region, including partial frames at its edges.
+    let end = base.saturating_add(len);
+    let first = if used { base / FRAME_SIZE } else { base.div_ceil(FRAME_SIZE) };
+    let last = if used { end.div_ceil(FRAME_SIZE) } else { end / FRAME_SIZE };
+    let first = (first as usize).max(1).min(MAX_FRAMES); // frame 0 stays reserved
+    let last = (last as usize).min(MAX_FRAMES);
     for f in first..last {
         bit_set(f, used);
     }
@@ -257,15 +263,50 @@ pub unsafe fn init(mb_info: u32) -> InitReport {
     }
 }
 
+extern "C" {
+    fn pippin_limine_region_count() -> usize;
+    fn pippin_limine_region(index: usize, base: *mut u64, len: *mut u64, kind: *mut u64);
+}
+
+/// Initialize the frame bitmap from Limine's memory map. Limine marks the
+/// executable and bootloader data separately, so only USABLE regions are freed.
+pub unsafe fn init_limine() -> InitReport {
+    FRAME_BITMAP.fill(u64::MAX);
+    FRAME_TOTAL = MAX_FRAMES;
+    FRAME_FREE = 0;
+    SEARCH_HINT = 1;
+
+    let regions = pippin_limine_region_count();
+    let mut usable_kib = 0;
+    for i in 0..regions {
+        let (mut base, mut len, mut kind) = (0, 0, 0);
+        pippin_limine_region(i, &mut base, &mut len, &mut kind);
+        if kind == 0 {
+            usable_kib += len / 1024;
+            paint_range(base, len, false);
+        }
+    }
+    let mut free = 0;
+    for f in 1..MAX_FRAMES {
+        if !bit_is_used(f) {
+            free += 1;
+        }
+    }
+    FRAME_FREE = free;
+    InitReport { region_count: regions, usable_kib, total_frames: FRAME_TOTAL, free_frames: free }
+}
+
 /// Allocate `count` contiguous frames. Returns physical address.
 pub fn alloc_frames(count: usize) -> Option<u64> {
     let mut run = 0usize;
     let mut start = 1usize;
     // SAFETY: statics used single-threaded during boot, before the scheduler.
     let mut frame = unsafe { SEARCH_HINT.max(1) };
-    loop {
+    let mut scanned = 0usize;
+    while scanned < MAX_FRAMES + count {
         if frame >= MAX_FRAMES {
             frame = 1;
+            run = 0;
         }
         if !bit_is_used(frame) {
             if run == 0 {
@@ -284,7 +325,9 @@ pub fn alloc_frames(count: usize) -> Option<u64> {
             run = 0;
         }
         frame += 1;
+        scanned += 1;
     }
+    None
 }
 
 /// Allocate one frame and zero it. Returns physical address.

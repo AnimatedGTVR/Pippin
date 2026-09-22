@@ -7,7 +7,7 @@
 /// Kernel code segment from boot.S's GDT.
 pub const GDT_CODE: u16 = 0x08;
 
-/// A 64-bit interrupt gate (no IST usage yet).
+/// A 64-bit interrupt gate.
 const GATE_INTERRUPT: u8 = 0x0E;
 
 /// One 16-byte IDT descriptor.
@@ -28,11 +28,11 @@ impl IdtEntry {
         Self { offset_low: 0, selector: 0, ist: 0, flags: 0, offset_mid: 0, offset_high: 0, reserved: 0 }
     }
 
-    const fn new(offset: u64, selector: u16, dpl: u8, gate: u8) -> Self {
+    const fn new(offset: u64, selector: u16, dpl: u8, gate: u8, ist: u8) -> Self {
         Self {
             offset_low: (offset & 0xFFFF) as u16,
             selector,
-            ist: 0,
+            ist,
             flags: 0x80 | (dpl << 5) | gate, // present | dpl | gate type
             offset_mid: ((offset >> 16) & 0xFFFF) as u16,
             offset_high: (offset >> 32) as u32,
@@ -96,7 +96,8 @@ pub struct IntFrame {
 pub unsafe fn init() {
     for (i, slot) in IDT.iter_mut().enumerate() {
         let stub = ISR_STUB_TABLE[i] as u64;
-        *slot = IdtEntry::new(stub, GDT_CODE, 0, GATE_INTERRUPT);
+        let ist = if i == 8 { crate::gdt::double_fault_ist() } else { 0 };
+        *slot = IdtEntry::new(stub, GDT_CODE, 0, GATE_INTERRUPT, ist);
     }
     let idtr = Idtr {
         limit: (core::mem::size_of_val(&IDT) - 1) as u16,

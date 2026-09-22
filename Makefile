@@ -16,6 +16,8 @@ run-gdb: kernel
 	./scripts/run-qemu.sh --gdb
 
 iso:
+	cmake -S . -B $(BUILD_DIR) -G "Unix Makefiles"
+	cmake --build $(BUILD_DIR) --target kernel-limine.elf -j
 	./scripts/make-iso.sh
 
 clean:

@@ -13,6 +13,7 @@ use crate::mem;
 
 pub const PRESENT: u64 = 1 << 0;
 pub const WRITABLE: u64 = 1 << 1;
+const UNCACHED: u64 = (1 << 3) | (1 << 4); // PWT | PCD
 
 const LEVEL_SHIFT: [u64; 4] = [39, 30, 21, 12];
 const PD_ENTRIES: usize = 512;
@@ -79,4 +80,36 @@ pub fn install_initial() -> Option<PmapReport> {
         pml4_phys: pml4,
         page_table_frames: leaf_tables + 3,
     })
+}
+
+/// Identity-map one 4 KiB MMIO page outside the first GiB without caching.
+/// The frame allocator and page tables must already be initialized.
+pub fn map_mmio_page(phys: u64) -> Option<*mut u8> {
+    if phys & (mem::PAGE_SIZE - 1) != 0 || phys < INITIAL_MAP_SIZE {
+        return None;
+    }
+    let root = crate::cpu::read_cr3() as *mut u64;
+    let pdpt = unsafe { (*root.add(level_index(phys, 0)) & !0xFFF) as *mut u64 };
+    if pdpt.is_null() {
+        return None;
+    }
+    let pdpt_index = level_index(phys, 1);
+    let mut pd_phys = unsafe { *pdpt.add(pdpt_index) & !0xFFF };
+    if pd_phys == 0 {
+        pd_phys = mem::alloc_zeroed_frame()?;
+        unsafe { *pdpt.add(pdpt_index) = pd_phys | PRESENT | WRITABLE };
+    }
+    let pd = pd_phys as *mut u64;
+    let pd_index = level_index(phys, 2);
+    let mut pt_phys = unsafe { *pd.add(pd_index) & !0xFFF };
+    if pt_phys == 0 {
+        pt_phys = mem::alloc_zeroed_frame()?;
+        unsafe { *pd.add(pd_index) = pt_phys | PRESENT | WRITABLE };
+    }
+    let pt = pt_phys as *mut u64;
+    unsafe {
+        *pt.add(level_index(phys, 3)) = phys | PRESENT | WRITABLE | UNCACHED;
+        core::arch::asm!("invlpg [{}]", in(reg) phys, options(nostack, preserves_flags));
+    }
+    Some(phys as *mut u8)
 }

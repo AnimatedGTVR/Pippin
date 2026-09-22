@@ -16,6 +16,7 @@
 //        idle/panic loop
 
 #include <pippin/kernel.hh>
+#include <stddef.h>
 
 using ctor_t = void (*)(void);
 extern ctor_t __init_array_start[];
@@ -42,6 +43,15 @@ void run_global_ctor_tors() {
 
 extern "C" const char* pippin_cpp_version() {
     return pippin::kabi::kKernelVersion;
+}
+
+// The Limine image overrides these weak hooks with real memory-map accessors.
+// The Multiboot image never calls them, but the shared Rust archive references
+// both boot paths in its common entry routine.
+extern "C" __attribute__((weak)) size_t pippin_limine_region_count() { return 0; }
+extern "C" __attribute__((weak)) void pippin_limine_region(size_t, uint64_t* base,
+                                                            uint64_t* len, uint64_t* kind) {
+    *base = *len = *kind = 0;
 }
 
 extern "C" __attribute__((noreturn)) void kernel_entry(uint32_t mb_info) {

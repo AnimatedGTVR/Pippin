@@ -73,3 +73,17 @@ pub fn read_cr3() -> u64 {
     }
     value
 }
+
+#[inline]
+pub unsafe fn read_msr(msr: u32) -> u64 {
+    let lo: u32;
+    let hi: u32;
+    asm!("rdmsr", in("ecx") msr, out("eax") lo, out("edx") hi, options(nomem, nostack));
+    ((hi as u64) << 32) | lo as u64
+}
+
+#[inline]
+pub unsafe fn write_msr(msr: u32, value: u64) {
+    asm!("wrmsr", in("ecx") msr, in("eax") value as u32,
+         in("edx") (value >> 32) as u32, options(nomem, nostack));
+}

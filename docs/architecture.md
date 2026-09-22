@@ -40,7 +40,7 @@ deeper dive into one slice: [build](build.md), [boot](boot.md),
 
 | Layer            | Language | Responsibility |
 |------------------|----------|----------------|
-| Boot & CPU       | Assembly | Multiboot entry, long-mode bring-up, GDT/IDT/TSS tracks, syscall trampolines, context-switch stubs, spinlocks where rustc can't do it |
+| Boot & CPU       | Assembly and Rust | Multiboot long-mode entry in Assembly; GDT/TSS, IDT, interrupt dispatch, and timers in Rust |
 | Kernel core      | Rust     | Memory manager, interrupt dispatch, scheduler, IPC, syscall table, Toolbox service plumbing, safety-critical data structures |
 | Subsystems       | C++      | ACPI/PCI, disks, filesystem, graphics/compositor plumbing, the C++ half of the Toolbox, driver framework |
 | Glue / ABI       | C        | libc-style stubs (`memset`, `memcpy`, `strlen`, …), a stable shim layer for anything that wants a plain C ABI |
@@ -84,7 +84,7 @@ does not follow to 68k.
 │  → interrupts, MMU, clock/timer, port I/O, ACPI/PCI          │
 ├───────────────────────────────────────────────────────────────┤
 │  BRING-UP (Assembly)                                          │
-│  → boot.S: Multiboot → long mode → kernel_entry               │
+│  → Limine long-mode entry or Multiboot boot.S                 │
 ├───────────────────────────────────────────────────────────────┤
 │  HARDWARE — QEMU q35 today, real x86-64 later, 68k later     │
 └───────────────────────────────────────────────────────────────┘
@@ -134,11 +134,11 @@ processes as protection arrives.
 
 ## 7. Memory model
 
-- **Early:** flat identity map of the first 1 GiB (2 MiB pages) set up in
-  `boot.S`. Kernel lives at physical 1 MiB; virtual == physical.
-- **Milestone 1:** higher-half remap — kernel mapped at
-  `0xFFFF800000000000+`, user land below, proper 4 KiB page tables, physical
-  frame bitmap + zone heap allocators.
+- **Multiboot path:** `boot.S` maps the first 1 GiB at both low addresses and
+  `0xFFFF800000000000+`; Rust replaces the 2 MiB boot mapping with 4 KiB pages.
+- **Limine path:** Limine enters the high ELF at `0xffffffff80000000+` with
+  its own page tables and memory map. The M1 core retains these tables while
+  using only Limine-marked usable memory for its frame and zone allocators.
 - **Zones:** the classic "NewPtr/NewHandle" model becomes typed memory zones,
   each owned by a Manager or process; handles are zone+kinds guarded objects.
 - Layout constants live in `kernel/rust/src/mem.rs`.
@@ -162,7 +162,7 @@ language calls go through C thunks — see [drivers.md](drivers.md).
 
 ## 10. FFI and linking strategy
 
-The four languages share one ELF and a few simple rules:
+The kernel languages share each boot ELF through a few simple rules:
 
 1. **The boundary is `extern "C"`.** No mangled C++ symbols cross languages.
    Rust declares C functions in `kernel/rust/src/ffi.rs`; C++ exports C names
@@ -171,11 +171,10 @@ The four languages share one ELF and a few simple rules:
    `staticlib`; `ld` links them with a linker group (`--start-group/--end-
    group`) because the archives reference each other in both directions.
 3. **Common codegen rules** (root `CMakeLists.txt`): freestanding, no PIC/PIE,
-   no red zone, no stack protector. Rust builds against the host target today
-   but `#![no_std]` — the doc-versioned directive is a dedicated freestanding
-   target (see [build.md](build.md)).
-4. **One linker script** (`kernel/linker.ld`) owns section order, the BSS
-   region, `__init_array` handling and the Multiboot address fields.
+   no red zone, no stack protector. Rust uses the freestanding
+   `x86_64-unknown-none` target and `#![no_std]` (see [build.md](build.md)).
+4. **Two linker scripts** own the Multiboot physical layout and the Limine
+   higher-half ELF layout, respectively.
 5. **Host-side shell glue** (`scripts/`) runs image and emulator commands around
    the build. CMake and the linker still own compilation and the final ELF link;
    shell scripts are not part of the kernel image.
@@ -184,14 +183,15 @@ The four languages share one ELF and a few simple rules:
 
 ```
 Pippin/
-├── boot/limine.conf        # reserved for the Milestone-1 Limine migration
+├── boot/limine.conf        # Limine protocol ISO entry
 ├── docs/                   # this documentation
 ├── kernel/
-│   ├── asm/boot.S          # Multiboot → long-mode bring-up (only the ELF entry)
+│   ├── asm/boot.S          # Multiboot → long-mode bring-up
 │   ├── c/                  # C glue: libc stubs, shims
 │   ├── cpp/                # C++ runtime: entry, "Managers" scaffolding
 │   ├── rust/               # Rust kernel core: serial, cpu, mem, ffi
-│   └── linker.ld
+│   ├── linker.ld           # Multiboot image
+│   └── limine-linker.ld    # Limine image
 ├── drivers/cpp/            # C++ driver layer
 ├── apps/                   # future C++/Rust apps; optional C# bindings
 └── scripts/                # run-qemu.sh, make-iso.sh
@@ -199,13 +199,12 @@ Pippin/
 
 ## 12. Boot path (summary)
 
-QEMU/GRUB → Multiboot v1 header (address fields set, so 64-bit works) →
-`boot.S` zeroes BSS, builds an identity map, enables PAE/LME/paging/SSE →
-loads a 64-bit GDT → jumps to `kernel_entry` (C++) → constructors →
-`pippin_core_main` (Rust) → idle loop. Full details in [boot.md](boot.md).
+The Limine ISO enters `limine_start` in 64-bit mode. The direct QEMU path uses
+Multiboot v1 and `boot.S` for long-mode bring-up. Each runs C++ constructors
+before entering the same Rust core. Full details are in [boot.md](boot.md).
 
 ## 13. Roadmap
 
-See [milestones.md](milestones.md). Short version: M0 skeleton (this), M1 core
-memory+interrupts+Limine, M2 processes+syscalls+IPC, M3 drivers, M4 GUI, M5 C++
-apps, M6 optional C# apps on x86-64, M7 68k study.
+See [milestones.md](milestones.md). M0 skeleton and M1 core are complete. Next
+are M2 processes+syscalls+IPC, M3 drivers, M4 GUI, M5 native apps, optional
+M6 C# apps on x86-64, and M7 68k study.

@@ -1,11 +1,10 @@
 # Pippin kernel crate build configuration.
 #
 # The Rust side builds as a `no_std` staticlib that CMake links into the
-# final kernel ELF. In this bootstrap environment rustc ships with only the
-# host target's std, so we build against the host target while never
-# referencing `std`. See docs/build.md — at Milestone 1 this target is
-# replaced by a dedicated freestanding target (e.g. x86_64-unknown-none
-# via rustup, or a custom JSON spec with `-Zbuild-std`).
+# final kernel ELF. The freestanding target avoids Linux userspace defaults.
 
 [build]
-target = "x86_64-unknown-linux-gnu"
+target = "x86_64-unknown-none"
+
+[target.x86_64-unknown-none]
+rustflags = ["-C", "code-model=large", "-C", "relocation-model=static"]

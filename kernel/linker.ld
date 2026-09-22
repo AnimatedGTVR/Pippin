@@ -67,19 +67,19 @@ SECTIONS
   . = ALIGN(4K);
   .text : AT(ADDR(.text) - KERNEL_VMA_BASE)
   {
-    *(.text .text.*)
+    *(.text .text.* .ltext .ltext.*)
   }
 
   . = ALIGN(4K);
   .rodata : AT(ADDR(.rodata) - KERNEL_VMA_BASE)
   {
-    *(.rodata .rodata.*)
+    *(.rodata .rodata.* .lrodata .lrodata.*)
   }
 
   . = ALIGN(4K);
   .data : AT(ADDR(.data) - KERNEL_VMA_BASE)
   {
-    *(.data .data.*)
+    *(.data .data.* .ldata .ldata.*)
   }
 
   /* C++ global constructors, called by kernel/cpp entry.                  */
@@ -109,7 +109,7 @@ SECTIONS
   .bss : AT(ADDR(.bss) - KERNEL_VMA_BASE)
   {
     __bss_start = .;
-    *(.bss .bss.*)
+    *(.bss .bss.* .lbss .lbss.*)
     *(COMMON)
     . = ALIGN(4K);
     __bss_end = .;

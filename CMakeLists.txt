@@ -1,12 +1,12 @@
 # Pippin top-level build.
 #
-# One build produces one artifact: a Multiboot kernel ELF which is a mix of
+# Shared build inputs produce Multiboot and Limine kernel ELFs from a mix of
 #   - Assembly  (kernel/asm/boot.S)  boot + long-mode bring-up
 #   - Rust      (kernel/rust)        no_std staticlib, built by cargo
 #   - C++       (kernel/cpp)         boot runtime / subsystem glue
 #   - C         (kernel/c)           libc-style stubs
 #   - C++       (drivers/cpp)        driver layer
-# All of it is linked into a single freestanding ELF by `ld`.
+# Each boot path is linked into a freestanding ELF by `ld`.
 #
 # The driver layer stays in this build until app-land exists; turn on
 # PIPPIN_BUILD_APPS at Milestone 5 to add native C++ and Rust applications.
@@ -24,7 +24,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE OFF)
 option(PIPPIN_BUILD_APPS "Build the future native application layer" OFF)
 
 # ---- Freestanding codegen rules shared by every kernel/driver source ----
-# -mcmodel=large: the kernel links at KERNEL_VMA_BASE (0xFFFF800000000000),
+# -mcmodel=large: both kernel images link in the higher half,
 # outside the ±2 GiB reach that small-model 32-bit relocations assume.
 add_compile_options(
   -ffreestanding
@@ -54,7 +54,7 @@ set(CMAKE_ASM_COMPILER "${CMAKE_C_COMPILER}")
 # side), which is why the produced archive is triple-qualified.
 set(PIPPIN_RUST_CRATE_DIR "${CMAKE_SOURCE_DIR}/kernel/rust")
 set(PIPPIN_RUST_TARGET_DIR "${CMAKE_BINARY_DIR}/kernel/rust/target")
-set(PIPPIN_RUST_TARGET_SUBDIR "x86_64-unknown-linux-gnu")
+set(PIPPIN_RUST_TARGET_SUBDIR "x86_64-unknown-none")
 set(PIPPIN_RUST_LIB "${PIPPIN_RUST_TARGET_DIR}/${PIPPIN_RUST_TARGET_SUBDIR}/release/libpippin_kernel.a")
 
 add_custom_command(
@@ -64,8 +64,10 @@ add_custom_command(
   DEPENDS
     "${PIPPIN_RUST_CRATE_DIR}/Cargo.toml"
     "${PIPPIN_RUST_CRATE_DIR}/src/lib.rs"
+    "${PIPPIN_RUST_CRATE_DIR}/src/apic.rs"
     "${PIPPIN_RUST_CRATE_DIR}/src/cpu.rs"
     "${PIPPIN_RUST_CRATE_DIR}/src/ffi.rs"
+    "${PIPPIN_RUST_CRATE_DIR}/src/gdt.rs"
     "${PIPPIN_RUST_CRATE_DIR}/src/heap.rs"
     "${PIPPIN_RUST_CRATE_DIR}/src/idt.rs"
     "${PIPPIN_RUST_CRATE_DIR}/src/interrupts.rs"

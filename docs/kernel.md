@@ -1,25 +1,26 @@
 # Kernel
 
 The kernel core is written in Rust (`kernel/rust/`), wrapped by a thin C++
-runtime and linked into one ELF. Read [architecture.md](architecture.md) for
+runtime and linked into both boot ELFs. Read [architecture.md](architecture.md) for
 the whole picture; this file is the Rust deep-dive.
 
 ## Entry and ownership
 
 ```
-kernel_entry(mb_info)          C++ (entry.cc)
-   ├─ run_global_ctor_tors()
-   └─ pippin_core_main(mb_info)    Rust (lib.rs) — never returns
+kernel_entry(mb_info) or limine_start()     C++
+   ├─ run global constructors
+   └─ pippin_core_main(_limine)             Rust (lib.rs) — never returns
          ├─ serial::init(0x3F8)    + writeln! bootstrap banner
-         ├─ mem::multiboot_upper_memory(mb_info)
+         ├─ memory map → frame bitmap → page tables / heap
          ├─ ffi::cpp_version()      ← reverse bridge into C++
          ├─ ffi::driver_count()     ← reverse bridge into drivers
+         ├─ GDT/TSS → IDT → PIT → APIC timer
          └─ loop { cpu::halt() }
 ```
 
 The Rust crate is `no_std`, dependency-free (`Cargo.toml` `[dependencies]` is
 intentionally empty) and compiled with `panic=abort`. It exposes a single C
-entry (`pippin_core_main`) plus whatever the C++/driver layer needs to call
+entry for each boot path plus whatever the C++/driver layer needs to call
 back into (`kernel/rust/src/ffi.rs`). Nothing enters Rust but through
 `extern "C"` — this keeps the language boundary trivial to audit.
 
@@ -29,7 +30,12 @@ back into (`kernel/rust/src/ffi.rs`). Nothing enters Rust but through
 |---------------|----------|
 | `cpu.rs`      | `outb`/`inb` port I/O, `halt`, `cli`/`sti` (inline `asm!`) |
 | `serial.rs`   | 16550 COM1 driver; `stdout()` -> `core::fmt::Write`; `is_ready()` |
-| `mem.rs`      | layout constants, `align_up`, Multiboot v1 upper-memory read |
+| `mem.rs`      | Multiboot/Limine memory maps and physical frame bitmap |
+| `mm.rs`       | 4 KiB page tables for the Multiboot path and MMIO mapping |
+| `heap.rs`     | zone allocator backing `Box` and `Vec` |
+| `gdt.rs`      | GDT, TSS, and double-fault stack |
+| `idt.rs`/`interrupts.rs` | 256-vector IDT, PIC/PIT and interrupt dispatch |
+| `apic.rs`     | calibrated local APIC timer |
 | `ffi.rs`      | `extern "C"` bridge: `pippin_cpp_version`, `pippin_driver_count` |
 | `lib.rs`      | `pippin_core_main`, `#[panic_handler]` |
 
@@ -41,16 +47,13 @@ Subsystem modules follow the classic Macintosh names — `mem`, `proc`, `event`,
 boot. This makes the Toolbox structure visible from the kernel's own source
 tree, not just from the docs.
 
-## Planned progression
+## Milestone progression
 
-- **Milestone 1 — memory & interrupts:**
-  - physical frame allocator (bitmap over the memory map),
-  - recursive page-table approach or Limine-provided maps for `kern_vm`,
-  - higher-half remap using `HIGHER_HALF_BASE`,
-  - GDT/TSS + IDT in `boot.S`-adjacent asm, all 256 vectors wired to a Rust
-    dispatcher, PIC→APIC(timer) bring-up,
-  - zone heap: a bump/slab "Zone" allocator backing `Box`/`Vec` (a
-    `#[global_allocator]` on a static zone).
+- **Milestone 1 — memory & interrupts (complete):**
+  - physical frame bitmap over the bootloader memory map,
+  - higher-half 4 KiB tables on Multiboot, Limine page tables on the ISO path,
+  - GDT/TSS, 256-vector IDT, Rust dispatcher, and PIT→APIC timer handoff,
+  - zone allocator backing `Box`/`Vec` through `#[global_allocator]`.
 - **Milestone 2 — processes & syscalls:**
   - `syscall`/`sysret` trampolines (asm), numbered table with names from
     `pippin::kabi::Syscall` (`kernel/cpp/include/pippin/kernel.hh`),
