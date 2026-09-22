@@ -31,7 +31,8 @@ builds.
 ## Building
 
 ```sh
-make            # configure + compile build/kernel.elf (Multiboot)
+make specs      # inspect host resources and calculate safe limits
+make            # preflight + configure + compile build/kernel.elf (Multiboot)
 make run        # Multiboot boot in a QEMU window; serial log in terminal
 make run-shell  # QEMU window with interactive C# shell surfaces
 make run-ui     # two independent C# app processes and window broker
@@ -74,6 +75,43 @@ processes. They create normal Pippin windows, submit their own pixels, and
 receive input/window events. The broker connects them to the Rust compositor
 over COM2. The apps still run on the host, not inside the guest. A QEMU
 monitor socket is available at `build/pippin-monitor.sock` during this run.
+
+## Host preflight and resource limits
+
+Before a normal kernel or ISO build, `scripts/preflight.sh` inspects the Linux
+host and writes `build/pippin-limits.env`. The generated values include the
+host logical-thread count, total RAM, free project-disk space, a resource
+profile, a compiler job cap, and the QEMU guest-memory limit.
+
+The current QEMU RAM policy is intentionally conservative:
+
+| Host RAM | Profile | QEMU RAM |
+| --- | --- | ---: |
+| under 4 GiB | constrained | 256 MiB |
+| 4-8 GiB | balanced | 384 MiB |
+| 8-16 GiB | comfortable | 512 MiB |
+| 16 GiB or more | high | 768 MiB |
+
+Pippin's current early direct map covers the low 1 GiB, so the preflight never
+allocates a guest-memory size above that architectural boundary. Build
+parallelism reserves one logical host thread when possible and is capped at
+eight jobs, with tighter caps on low-memory systems.
+
+Run `make specs` to rerun and print the calculation without starting QEMU.
+
+## Desktop runtime diagnostics
+
+Graphical QEMU runs keep the launch terminal active as a diagnostic console.
+The run script prefixes live output so the source is obvious:
+
+- `[guest]` — Pippin COM1/serial kernel and shell output
+- `[shell]` / `[shell:err]` — the host C# desktop shell
+- `[qemu]` — QEMU stderr/warnings
+- `[qemu-debug]` — QEMU `guest_errors` diagnostics
+
+The same session is written to `build/logs/runtime.log`. Dedicated copies live
+at `build/logs/shell.log` and `build/logs/qemu-debug.log`. These files are
+inside the ignored `build/` tree, so debug output does not pollute commits.
 
 ## How the languages meet
 
