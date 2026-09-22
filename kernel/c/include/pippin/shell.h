@@ -36,6 +36,7 @@ typedef struct pippin_shell_surface {
 } pippin_shell_surface;
 
 uint32_t pippin_shell_abi_version(void);
+int pippin_shell_surface_valid(const pippin_shell_surface* surface);
 size_t pippin_shell_surface_count(void);
 const pippin_shell_surface* pippin_shell_surface_at(size_t index);
 
