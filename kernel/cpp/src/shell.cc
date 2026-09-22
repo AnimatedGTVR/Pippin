@@ -93,18 +93,40 @@ constexpr ui::Flow windowContent(int32_t width, int32_t height, int32_t gap = 10
     );
 }
 
-constexpr ui::ControlSpec kLauncherSpecs[] = {
-    ui::heading("Applications"),
-    ui::searchBox("Search apps", "launcher.search"),
-    ui::button("Files", "files.open"),
-    ui::button("Settings", "settings.open"),
-    ui::button("Terminal", "terminal.open"),
+constexpr ui::Node kLauncherActionNodes[] = {
+    ui::cross(ui::grow(ui::leaf(ui::button("Files", "files.open")), 1), 64),
+    ui::cross(ui::grow(ui::leaf(ui::button("Settings", "settings.open")), 1), 64),
+    ui::cross(ui::grow(ui::leaf(ui::button("Terminal", "terminal.open")), 1), 64),
 };
 
-constexpr auto kLauncherControls = ui::flow(
-    windowContent(500, 400),
-    kLauncherSpecs
+constexpr ui::Node kLauncherActionRow =
+    ui::fixed(ui::group(ui::Axis::HORIZONTAL, kLauncherActionNodes, 12), 90);
+
+constexpr ui::Node kLauncherColumnNodes[] = {
+    ui::leaf(ui::heading("Applications")),
+    ui::leaf(ui::searchBox("Search apps", "launcher.search")),
+    kLauncherActionRow,
+};
+
+constexpr ui::Node kLauncherColumn =
+    ui::group(ui::Axis::VERTICAL, kLauncherColumnNodes, 12);
+
+constexpr ui::Node kLauncherTree =
+    ui::proxy(kLauncherColumn, ui::Insets{20, 24, 20, 24});
+
+constexpr auto kLauncherControls = ui::layoutTree<5>(
+    kLauncherTree,
+    ui::Rect{0, 44, 500, 356}
 );
+
+static_assert(kLauncherControls.size() == 5);
+static_assert(kLauncherControls[0].frame.y == 64);
+static_assert(kLauncherControls[1].frame.y == 106);
+static_assert(kLauncherControls[2].frame.y == 169);
+static_assert(kLauncherControls[2].frame.height == 64);
+static_assert(kLauncherControls[2].frame.width == 142);
+static_assert(kLauncherControls[4].frame.x == 333);
+static_assert(kLauncherControls[4].frame.width == 143);
 
 constexpr pippin_shell_item kLauncherItems[] = {
     shellItem(kLauncherControls[0]),
@@ -171,8 +193,6 @@ constexpr pippin_shell_item kTerminalItems[] = {
     shellItem(kTerminalControls[2]),
 };
 
-static_assert(kLauncherControls[0].frame.y == 64);
-static_assert(kLauncherControls[1].frame.y == 104);
 static_assert(kFilesControls[1].frame.width == 572);
 static_assert(kSettingsControls[2].frame.width == 472);
 static_assert(kTerminalControls[2].frame.width == 592);
