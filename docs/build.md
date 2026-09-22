@@ -18,7 +18,6 @@ This mandatory set, in the form installed on the current machine:
 | `make`          | 4.3                  | top-level targets               |
 | `bash`          | host shell           | QEMU and ISO helper scripts     |
 | `qemu-system-x86_64` | 8.2 (optional)  | boot the OS without real HW     |
-| `.NET SDK` | 8.0 (for M4.5) | build and run the host C# shell |
 | Limine + `xorriso` | Limine 12.9 / xorriso 1.5.6 tested | hybrid BIOS/UEFI ISO |
 
 `gcc` is used both as the C/C++ compiler and as the assembler driver
@@ -34,8 +33,8 @@ builds.
 make specs      # inspect host resources and calculate safe limits
 make            # preflight + configure + compile build/kernel.elf (Multiboot)
 make run        # Multiboot boot in a QEMU window; serial log in terminal
-make run-shell  # QEMU window with interactive C# shell surfaces
-make run-ui     # two independent C# app processes and window broker
+make run-shell  # alias for the native desktop
+make run-ui     # alias for the native desktop
 make run-headless # serial console only (also works without a desktop session)
 make run-disk   # QEMU window with the FAT32 Hello bundle disk
 make run-gdb    # QEMU paused, GDB stub on :1234
@@ -54,27 +53,10 @@ qemu-system-x86_64 -machine q35 -m 256M -display gtk -serial stdio \
     -kernel build/kernel.elf
 ```
 
-`make run` opens QEMU's VGA window and shows the boot log there as it runs.
-The latest lines remain above the `pippin>` command prompt. Click the window
-to type, then try `fetch`, `desktop`, `help`, `mem`, or `pci`. `desktop` shows the
-M4 graphics preview; press Esc to return to the prompt. The terminal keeps the full serial
-log and also accepts shell commands. Close the QEMU window or press
-Ctrl+C in the terminal to stop it. For a terminal-only session, use
-`make run-headless`. This command shell is an M4 bootstrap interface; the
-graphical desktop and movable windows are still under development.
-
-`make run-shell` builds the .NET shell, boots QEMU, and connects the host C#
-process to COM2 through a Unix socket. The C# process sends surfaces and
-handles clicks; Rust composes the pixels in QEMU. The C# process runs on the
-host, since Pippin does not yet have a managed guest runtime. The shell
-automatically enters graphics mode after the connection is ready.
-
-`make run-ui` builds the window broker, low-level C# client API, GUI toolkit,
-and two example applications. About and Task Manager run as separate host
-processes. They create normal Pippin windows, submit their own pixels, and
-receive input/window events. The broker connects them to the Rust compositor
-over COM2. The apps still run on the host, not inside the guest. A QEMU
-monitor socket is available at `build/pippin-monitor.sock` during this run.
+`make run` boots directly into the native graphical desktop. The shell model
+is compiled as C++, exported through a small C ABI, and rendered by the Rust
+compositor. Press Esc to return to the text command shell; run `desktop` to
+reopen the graphics desktop. No host .NET process is required.
 
 ## Host preflight and resource limits
 
@@ -105,7 +87,6 @@ Graphical QEMU runs keep the launch terminal active as a diagnostic console.
 The run script prefixes live output so the source is obvious:
 
 - `[guest]` — Pippin COM1/serial kernel and shell output
-- `[shell]` / `[shell:err]` — the host C# desktop shell
 - `[qemu]` — QEMU stderr/warnings
 - `[qemu-debug]` — QEMU `guest_errors` diagnostics
 
