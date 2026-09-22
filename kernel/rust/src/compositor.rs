@@ -320,11 +320,25 @@ impl Compositor {
         let (row, in_rows) = if window.role == b'D' {
             let local_x = self.cursor_x - window.x;
             let local_y = self.cursor_y - window.y;
-            let row = if (12..=116).contains(&local_x) { 0 }
-                else if (132..=236).contains(&local_x) { 1 }
-                else if (252..=356).contains(&local_x) { 2 }
-                else { usize::MAX };
-            (row, (8..60).contains(&local_y))
+
+            // Control Manager v2 supplies real local bounds. Hit testing no
+            // longer knows how many dock items exist or where they are placed.
+            let laid_out = window.rows.iter().any(|row| row.width > 0 && row.height > 0);
+            if laid_out {
+                let row = window.rows.iter().position(|row| {
+                    row.width > 0 && row.height > 0
+                        && local_x >= row.x && local_x < row.x + row.width
+                        && local_y >= row.y && local_y < row.y + row.height
+                }).unwrap_or(usize::MAX);
+                (row, row != usize::MAX)
+            } else {
+                // Compatibility path for old bridge-created dock rows.
+                let row = if (12..=116).contains(&local_x) { 0 }
+                    else if (132..=236).contains(&local_x) { 1 }
+                    else if (252..=356).contains(&local_x) { 2 }
+                    else { usize::MAX };
+                (row, (8..60).contains(&local_y))
+            }
         } else if window.role == b'P' {
             let local_x = self.cursor_x - window.x;
             let local_y = self.cursor_y - window.y;
@@ -412,14 +426,25 @@ impl Compositor {
             self.rounded_rect(window.x, window.y, window.width, window.height,
                               SHELL_DARK, SHELL_BORDER);
 
-            for (index, row) in window.rows.iter().take(3).enumerate() {
-                let tile_x = window.x + 12 + index as i32 * 120;
-                let tile_y = window.y + 8;
-                self.rounded_rect(tile_x, tile_y, 104, 52, SHELL_SURFACE, SHELL_BORDER);
+            for (index, row) in window.rows.iter().take(8).enumerate() {
+                let managed = row.width > 0 && row.height > 0;
+                let tile_x = window.x + if managed { row.x } else { 12 + index as i32 * 120 };
+                let tile_y = window.y + if managed { row.y } else { 8 };
+                let tile_w = if managed { row.width } else { 104 };
+                let tile_h = if managed { row.height } else { 52 };
 
-                // App-icon tile.
+                // style=2 is the Control Manager's TILE style. Unknown styles
+                // deliberately fall back to the same restrained shell surface.
+                let tile_fill = match row.style {
+                    3 => CHROME_ACCENT,
+                    _ => SHELL_SURFACE,
+                };
+                self.rounded_rect(tile_x, tile_y, tile_w, tile_h, tile_fill, SHELL_BORDER);
+
+                // Bootstrap icon placeholder. Icon resources will become their
+                // own manager; the Control Manager only owns control geometry.
                 let icon_x = tile_x + 10;
-                let icon_y = tile_y + 11;
+                let icon_y = tile_y + ((tile_h - 30) / 2).max(0);
                 let icon_color = match index {
                     0 => 0x004f8fdc,
                     1 => 0x0057a773,
@@ -429,7 +454,8 @@ impl Compositor {
                 let glyph = match index { 0 => "A", 1 => "F", _ => "S" };
                 self.text(icon_x + 9, icon_y + 9, glyph, 1, 0x00ffffff);
 
-                self.text(tile_x + 49, tile_y + 20, &row.text, 1, SHELL_TEXT);
+                self.text(tile_x + 49, tile_y + ((tile_h - 7) / 2).max(0),
+                          &row.text, 1, SHELL_TEXT);
             }
             return;
         }
