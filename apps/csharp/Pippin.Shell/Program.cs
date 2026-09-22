@@ -179,6 +179,21 @@ internal sealed class HostBridge(string socketPath, Application[] clients)
             await SendAsync("X|" + action[..^6]);
             return;
         }
+        var terminal = clients.OfType<TerminalApp>().Single();
+        if (action.StartsWith("terminal.key.", StringComparison.Ordinal)
+            && byte.TryParse(action.AsSpan("terminal.key.".Length),
+                System.Globalization.NumberStyles.HexNumber, null, out var key))
+        {
+            terminal.Command += (char)key;
+            await ShowAsync("terminal");
+            return;
+        }
+        if (action == "terminal.backspace")
+        {
+            if (terminal.Command.Length > 0) terminal.Command = terminal.Command[..^1];
+            await ShowAsync("terminal");
+            return;
+        }
         switch (action)
         {
             case "launcher.open": await ShowAsync("launcher"); break;
