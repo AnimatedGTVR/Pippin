@@ -1,14 +1,14 @@
 set(PIPPIN_NATIVE_APP_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
-set(PIPPIN_HELLO_ELF "${CMAKE_BINARY_DIR}/apps/native/pippin-hello.elf")
+set(PIPPIN_HELLO_ELF "${CMAKE_BINARY_DIR}/apps/native/pippin_hello_app")
 set(PIPPIN_APP_BLOB "${CMAKE_BINARY_DIR}/pippin_hello_blob.o")
 
-add_executable(pippin-hello.elf hello.cpp)
-set_target_properties(pippin-hello.elf PROPERTIES
+add_executable(pippin_hello_app hello.cpp)
+set_target_properties(pippin_hello_app PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/apps/native"
   OUTPUT_NAME "pippin-hello"
   SUFFIX ".elf")
 
-target_compile_options(pippin-hello.elf PRIVATE
+target_compile_options(pippin_hello_app PRIVATE
   -ffreestanding
   -fno-pic
   -fno-pie
@@ -22,7 +22,7 @@ target_compile_options(pippin-hello.elf PRIVATE
   -fno-rtti
   -fno-threadsafe-statics)
 
-target_link_options(pippin-hello.elf PRIVATE
+target_link_options(pippin_hello_app PRIVATE
   -nostdlib
   -no-pie
   -static
@@ -45,7 +45,7 @@ add_custom_command(
           --redefine-sym _binary_pippin_hello_elf_end=pippin_hello_elf_end
           --redefine-sym _binary_pippin_hello_elf_size=pippin_hello_elf_size
           "${PIPPIN_APP_BLOB}"
-  DEPENDS pippin-hello.elf
+  DEPENDS pippin_hello_app
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/apps/native"
   COMMENT "Embedding native ELF app for Pippin loader"
   VERBATIM)
