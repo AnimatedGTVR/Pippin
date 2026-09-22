@@ -24,6 +24,14 @@ public sealed class Canvas(int width, int height)
             Array.Fill(Pixels, color & 0x00ffffff, y * Width + x0, x1 - x0);
     }
 
+    public void StrokeRect(Rect rect, uint color, int thickness = 1)
+    {
+        FillRect(new Rect(rect.X, rect.Y, rect.Width, thickness), color);
+        FillRect(new Rect(rect.X, rect.Y + rect.Height - thickness, rect.Width, thickness), color);
+        FillRect(new Rect(rect.X, rect.Y, thickness, rect.Height), color);
+        FillRect(new Rect(rect.X + rect.Width - thickness, rect.Y, thickness, rect.Height), color);
+    }
+
     public void DrawText(int x, int y, string text, uint color, int scale = 2)
     {
         foreach (var ch in text.ToUpperInvariant())
