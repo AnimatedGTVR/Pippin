@@ -33,7 +33,8 @@ with the `x86_64-unknown-none` target, `make`, and optional `qemu-system-x86_64`
 to run it. `make iso` also needs Limine and `xorriso`.
 
 ```sh
-make                # configure + build build/kernel.elf
+make specs          # inspect host specs and calculate safe Pippin limits
+make                # preflight + configure + build build/kernel.elf
 make run            # boot full desktop using QEMU's normal frontend
 make run-shell      # alias for make run
 make run-ui         # two independent C# apps using the new window API
@@ -43,6 +44,20 @@ make run-gdb        # normal QEMU frontend + GDB stub on :1234
 make iso            # build the Limine BIOS/UEFI ISO
 make clean
 ```
+
+Every normal build runs `scripts/preflight.sh` first. It reads the host's
+logical CPU count, total RAM, and free project-disk space, then writes
+`build/pippin-limits.env`. That file selects a resource profile, caps compiler
+parallelism, and chooses **256-768 MiB** of QEMU RAM. The QEMU cap intentionally
+stays below Pippin's current 1 GiB early direct-map limit. Run `make specs` to
+print the calculation without booting Pippin.
+
+While a graphical desktop session is running, the launching terminal becomes
+the diagnostic console. Guest serial output is tagged `[guest]`, C# shell
+messages are tagged `[shell]`, QEMU stderr is tagged `[qemu]`, and QEMU
+guest-error diagnostics are tagged `[qemu-debug]`. The same output is saved in
+`build/logs/runtime.log`, with dedicated `shell.log` and `qemu-debug.log`
+files for post-crash inspection.
 
 The Makefile defaults GUI runs to `QEMU_MODE=--defaultqemu`, which leaves display
 frontend selection to QEMU instead of forcing Pippin's stripped GTK frontend.
