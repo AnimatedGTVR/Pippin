@@ -56,6 +56,7 @@ public sealed class Label(string text) : Widget
 public sealed class Button(string text) : Widget
 {
     private bool pressed;
+    public bool IsPrimary { get; set; } = true;
     public string Text { get; set; } = text;
     public event Action? Clicked;
     public override int PreferredHeight => 40;
@@ -64,11 +65,13 @@ public sealed class Button(string text) : Widget
     {
         // Pippin buttons use a restrained GNOME-like accent treatment with
         // lightweight Redox-style geometry rather than heavy bevels.
-        var fill = pressed ? 0x002f6590u : 0x003d78a8u;
+        var fill = IsPrimary
+            ? (pressed ? 0x002f6590u : 0x003d78a8u)
+            : (pressed ? 0x00dfe3e6u : 0x00ffffffu);
         canvas.FillRect(Bounds, fill);
-        canvas.FillRect(new Rect(Bounds.X + 1, Bounds.Y + 1, Bounds.Width - 2, 1), 0x00699ac0);
-        canvas.FillRect(new Rect(Bounds.X + 1, Bounds.Y + Bounds.Height - 2, Bounds.Width - 2, 1), 0x00244f70);
-        canvas.DrawText(Bounds.X + 14, Bounds.Y + 13, Text, 0x00ffffff);
+        canvas.StrokeRect(Bounds, IsPrimary ? 0x002f6590u : 0x00b7bec3u);
+        canvas.DrawText(Bounds.X + 14, Bounds.Y + 13, Text,
+            IsPrimary ? 0x00ffffffu : 0x00252b31u);
     }
 
     public override bool MouseDown(int x, int y)
@@ -246,5 +249,23 @@ public sealed class ProgressBar : Widget
         canvas.FillRect(new Rect(Bounds.X, Bounds.Y + 4, Bounds.Width, 10), 0x00d5d9dc);
         canvas.FillRect(new Rect(Bounds.X, Bounds.Y + 4,
             (int)(Bounds.Width * Value), 10), 0x003d78a8);
+    }
+}
+
+
+public sealed class StatusBadge(string text) : Widget
+{
+    public string Text { get; set; } = text;
+    public bool Active { get; set; } = true;
+    public override int PreferredHeight => 26;
+
+    public override void Paint(Canvas canvas)
+    {
+        var width = Math.Min(Bounds.Width, Math.Max(64, Text.Length * 12 + 20));
+        var badge = new Rect(Bounds.X, Bounds.Y + 2, width, 24);
+        canvas.FillRect(badge, Active ? 0x00dceaf5u : 0x00e5e7e8u);
+        canvas.StrokeRect(badge, Active ? 0x007da5c3u : 0x00b7bec3u);
+        canvas.DrawText(badge.X + 10, badge.Y + 6, Text,
+            Active ? 0x002f6590u : 0x006f777du);
     }
 }
