@@ -21,10 +21,6 @@ constexpr pippin_shell_item shellItem(ui::Control const& control) {
     };
 }
 
-constexpr pippin_shell_item legacyItem(const char* text, const char* action, uint8_t kind) {
-    return {text, action, kind, PIPPIN_CONTROL_STYLE_PLAIN, 0, 0, 0, 0, 0};
-}
-
 constexpr ui::ControlSpec kPanelSpecs[] = {
     ui::cross(ui::fixed("Search", "launcher.open", 'b', ui::ControlStyle::SEARCH, 220), 34),
     ui::spacer(),
