@@ -257,10 +257,15 @@ impl Compositor {
 
     fn window(&mut self, window: Window, focused: bool) {
         if matches!(window.role, b'P' | b'D' | b'N') {
-            // Shell surfaces stay visually light and quiet so applications remain dominant.
-            self.fill_rect(window.x + 2, window.y + 3, window.width, window.height, CHROME_SHADOW);
-            self.fill_rect(window.x, window.y, window.width, window.height, 0x00eef1f2);
-            self.border(window.x, window.y, window.width, window.height, 0x00b7bec3);
+            // Desktop shell surfaces sit above the solid-blue wallpaper as distinct,
+            // lightweight pieces of the Pippin shell.
+            if window.role != b'P' {
+                self.fill_rect(window.x + 2, window.y + 3, window.width, window.height, CHROME_SHADOW);
+            }
+            self.fill_rect(window.x, window.y, window.width, window.height,
+                           if window.role == b'P' { 0x00f5f7f8 } else { 0x00eef1f2 });
+            self.border(window.x, window.y, window.width, window.height,
+                        if window.role == b'P' { 0x00d4d9dd } else { 0x00b7bec3 });
             for (index, row) in window.rows.iter().enumerate() {
                 let x = window.x + 16 + index as i32 * 118;
                 if x + 90 > window.x + window.width { break; }
