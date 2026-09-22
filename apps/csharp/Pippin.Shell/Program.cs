@@ -12,7 +12,7 @@ public sealed class Wallpaper : Application
 {
     public override string Id => "org.pippin.wallpaper";
     public override IEnumerable<Surface> CreateSurfaces() =>
-        [new("wallpaper", SurfaceRole.Wallpaper, "Wallpaper", 0, 0, 800, 600,
+        [new("wallpaper", SurfaceRole.Wallpaper, "Wallpaper", 0, 0, 1024, 768,
             Background: "#2f80ed")];
 }
 
@@ -20,7 +20,7 @@ public sealed class Panel : Application
 {
     public override string Id => "org.pippin.panel";
     public override IEnumerable<Surface> CreateSurfaces() =>
-        [new("panel", SurfaceRole.Panel, "Panel", 0, 0, 800, 44,
+        [new("panel", SurfaceRole.Panel, "Panel", 0, 0, 1024, 44,
             UiNode.Row(UiNode.Button("Pippin", "launcher.open"),
                 UiNode.Button("Apps", "launcher.open"),
                 UiNode.Button("Files", "files.open"),
@@ -32,7 +32,7 @@ public sealed class Dock : Application
 {
     public override string Id => "org.pippin.dock";
     public override IEnumerable<Surface> CreateSurfaces() =>
-        [new("dock", SurfaceRole.Dock, "Dock", 218, 532, 364, 58,
+        [new("dock", SurfaceRole.Dock, "Dock", 330, 696, 364, 58,
             UiNode.Row(UiNode.Button("Apps", "launcher.restore"),
                 UiNode.Button("Files", "files.restore"),
                 UiNode.Button("Settings", "settings.restore")))];
@@ -42,7 +42,7 @@ public sealed class Launcher : Application
 {
     public override string Id => "org.pippin.launcher";
     public override IEnumerable<Surface> CreateSurfaces() =>
-        [new("launcher", SurfaceRole.Launcher, "Applications", 24, 62, 324, 390,
+        [new("launcher", SurfaceRole.Launcher, "Applications", 24, 62, 340, 470,
             UiNode.Column(UiNode.Heading("Applications"),
                 UiNode.Search("Search apps", "launcher.search"), UiNode.Separator(),
                 UiNode.Card(UiNode.Button("Files", "files.open"),
@@ -55,7 +55,7 @@ public sealed class Settings : Application
 {
     public override string Id => "org.pippin.settings";
     public override IEnumerable<Surface> CreateSurfaces() =>
-        [new("settings", SurfaceRole.AppWindow, "Settings", 160, 96, 480, 360,
+        [new("settings", SurfaceRole.AppWindow, "Settings", 272, 116, 520, 430,
             UiNode.Column(UiNode.Heading("Settings"), UiNode.Separator(),
                 UiNode.Card(UiNode.Heading("Appearance"),
                     UiNode.Button("Change wallpaper", "wallpaper.select.gradient"),
@@ -69,7 +69,7 @@ public sealed class Files : Application
 {
     public override string Id => "org.pippin.files";
     public override IEnumerable<Surface> CreateSurfaces() =>
-        [new("files", SurfaceRole.AppWindow, "Files", 112, 80, 540, 400,
+        [new("files", SurfaceRole.AppWindow, "Files", 100, 94, 620, 500,
             UiNode.Column(UiNode.Heading("Home"),
                 UiNode.Search("Search files", "files.search"), UiNode.Separator(),
                 UiNode.Card(UiNode.Button("Documents", "files.documents.open"),
@@ -82,7 +82,7 @@ public sealed class Notifications : Application
 {
     public override string Id => "org.pippin.notifications";
     public override IEnumerable<Surface> CreateSurfaces() =>
-        [new("notifications", SurfaceRole.Notification, "Notifications", 488, 54, 300, 96,
+        [new("notifications", SurfaceRole.Notification, "Notifications", 710, 54, 300, 96,
             UiNode.Label("Welcome to Pippin"))];
 }
 
@@ -191,7 +191,7 @@ internal sealed class HostBridge(string socketPath, Application[] clients)
             case "launcher.search": await ShowStatusAsync("App search ready"); break;
             case "files.search": await ShowStatusAsync("File search ready"); break;
             case "wallpaper.select.gradient":
-                await SendAsync("S|wallpaper|B|0|0|800|600|#2f80ed|");
+                await SendAsync("S|wallpaper|B|0|0|1024|768|#2f80ed|");
                 await ShowStatusAsync("Blue wallpaper applied");
                 break;
         }
