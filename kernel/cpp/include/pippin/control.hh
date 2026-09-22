@@ -181,6 +181,11 @@ constexpr ControlSpec searchBox(const char* text, const char* action,
     return fixed(text, action, 's', ControlStyle::SEARCH, basis);
 }
 
+constexpr ControlSpec textField(const char* text, const char* action,
+                                int32_t basis = 38) {
+    return fixed(text, action, 'e', ControlStyle::SUBTLE, basis);
+}
+
 constexpr ControlSpec toggle(const char* text, const char* action,
                              int32_t basis = 38) {
     return fixed(text, action, 't', ControlStyle::SUBTLE, basis);
