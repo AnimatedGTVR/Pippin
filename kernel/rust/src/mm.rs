@@ -116,18 +116,28 @@ pub fn map_mmio_page(phys: u64) -> Option<*mut u8> {
     Some(phys as *mut u8)
 }
 
-/// Map one low user page, splitting a bootloader huge page if necessary.
-/// Only the selected leaf gains user access; adjacent identity pages remain
-/// supervisor-only. The caller owns the physical frame.
+/// Map one 4 KiB user page anywhere in the canonical lower half.
+///
+/// User applications deliberately live above the kernel's low 1 GiB physical
+/// direct map. That avoids replacing identity mappings the kernel relies on
+/// when it accesses physical frames.
 pub fn map_user_page(virt: u64, phys: u64) -> Option<()> {
-    if virt >= INITIAL_MAP_SIZE || virt & 0xFFF != 0 || phys & 0xFFF != 0 {
+    const USER_TOP: u64 = 0x0000_8000_0000_0000;
+    if virt >= USER_TOP || virt & 0xFFF != 0 || phys & 0xFFF != 0
+        || phys >= INITIAL_MAP_SIZE {
         return None;
     }
+
     let root = (crate::cpu::read_cr3() & !0xFFF) as *mut u64;
     unsafe {
-        let pml4e = root.add(0);
-        if *pml4e & PRESENT == 0 { return None; }
-        *pml4e |= USER;
+        let pml4e = root.add(level_index(virt, 0));
+        if *pml4e & PRESENT == 0 {
+            let pdpt_phys = mem::alloc_zeroed_frame()?;
+            *pml4e = pdpt_phys | PRESENT | WRITABLE | USER;
+        } else {
+            *pml4e |= USER;
+        }
+
         let pdpt = (*pml4e & !0xFFF) as *mut u64;
         let pdpte = pdpt.add(level_index(virt, 1));
         if *pdpte & HUGE != 0 {
@@ -143,7 +153,10 @@ pub fn map_user_page(virt: u64, phys: u64) -> Option<()> {
         if *pdpte & PRESENT == 0 {
             let pd_phys = mem::alloc_zeroed_frame()?;
             *pdpte = pd_phys | PRESENT | WRITABLE | USER;
-        } else { *pdpte |= USER; }
+        } else {
+            *pdpte |= USER;
+        }
+
         let pd = (*pdpte & !0xFFF) as *mut u64;
         let pde = pd.add(level_index(virt, 2));
         if *pde & HUGE != 0 {
@@ -159,10 +172,80 @@ pub fn map_user_page(virt: u64, phys: u64) -> Option<()> {
         if *pde & PRESENT == 0 {
             let pt_phys = mem::alloc_zeroed_frame()?;
             *pde = pt_phys | PRESENT | WRITABLE | USER;
-        } else { *pde |= USER; }
+        } else {
+            *pde |= USER;
+        }
+
         let pt = (*pde & !0xFFF) as *mut u64;
         *pt.add(level_index(virt, 3)) = phys | PRESENT | WRITABLE | USER;
         core::arch::asm!("invlpg [{}]", in(reg) virt, options(nostack, preserves_flags));
     }
     Some(())
 }
+
+fn user_page_mapped(virt: u64) -> bool {
+    const USER_TOP: u64 = 0x0000_8000_0000_0000;
+    if virt >= USER_TOP { return false; }
+
+    let root = (crate::cpu::read_cr3() & !0xFFF) as *const u64;
+    unsafe {
+        let pml4e = *root.add(level_index(virt, 0));
+        if pml4e & (PRESENT | USER) != (PRESENT | USER) { return false; }
+
+        let pdpt = (pml4e & !0xFFF) as *const u64;
+        let pdpte = *pdpt.add(level_index(virt, 1));
+        if pdpte & (PRESENT | USER) != (PRESENT | USER) { return false; }
+        if pdpte & HUGE != 0 { return true; }
+
+        let pd = (pdpte & !0xFFF) as *const u64;
+        let pde = *pd.add(level_index(virt, 2));
+        if pde & (PRESENT | USER) != (PRESENT | USER) { return false; }
+        if pde & HUGE != 0 { return true; }
+
+        let pt = (pde & !0xFFF) as *const u64;
+        let pte = *pt.add(level_index(virt, 3));
+        pte & (PRESENT | USER) == (PRESENT | USER)
+    }
+}
+
+/// Validate that every page touched by a user pointer is currently mapped
+/// user-accessible. Syscalls use this before dereferencing user memory.
+pub fn user_range_mapped(ptr: u64, len: u64) -> bool {
+    if len == 0 { return true; }
+    let Some(last) = ptr.checked_add(len - 1) else { return false; };
+    let mut page = ptr & !(mem::PAGE_SIZE - 1);
+    let last_page = last & !(mem::PAGE_SIZE - 1);
+    loop {
+        if !user_page_mapped(page) { return false; }
+        if page == last_page { break; }
+        let Some(next) = page.checked_add(mem::PAGE_SIZE) else { return false; };
+        page = next;
+    }
+    true
+}
+
+/// Remove one normal 4 KiB user mapping and return its physical frame.
+/// Intermediate page tables are intentionally retained for the bootstrap
+/// loader; this keeps rollback simple and deterministic.
+pub fn unmap_user_page(virt: u64) -> Option<u64> {
+    if virt & 0xFFF != 0 { return None; }
+    let root = (crate::cpu::read_cr3() & !0xFFF) as *mut u64;
+    unsafe {
+        let pml4e = *root.add(level_index(virt, 0));
+        if pml4e & PRESENT == 0 { return None; }
+        let pdpt = (pml4e & !0xFFF) as *mut u64;
+        let pdpte = *pdpt.add(level_index(virt, 1));
+        if pdpte & PRESENT == 0 || pdpte & HUGE != 0 { return None; }
+        let pd = (pdpte & !0xFFF) as *mut u64;
+        let pde = *pd.add(level_index(virt, 2));
+        if pde & PRESENT == 0 || pde & HUGE != 0 { return None; }
+        let pt = (pde & !0xFFF) as *mut u64;
+        let pte = pt.add(level_index(virt, 3));
+        if *pte & (PRESENT | USER) != (PRESENT | USER) { return None; }
+        let phys = *pte & !0xFFF;
+        *pte = 0;
+        core::arch::asm!("invlpg [{}]", in(reg) virt, options(nostack, preserves_flags));
+        Some(phys)
+    }
+}
+

@@ -2,7 +2,7 @@
 BUILD_DIR ?= build
 QEMU_MODE ?= --defaultqemu
 
-.PHONY: all preflight specs kernel run run-shell run-ui run-headless run-gdb run-disk disk iso clean distclean
+.PHONY: all preflight specs apps kernel run run-shell run-ui run-headless run-gdb run-disk disk iso clean distclean
 
 all: kernel
 
@@ -10,6 +10,10 @@ preflight:
 	BUILD_DIR="$(abspath $(BUILD_DIR))" bash scripts/preflight.sh
 
 specs: preflight
+
+apps: preflight
+	cmake -S . -B $(BUILD_DIR) -G "Unix Makefiles"
+	bash -c 'source "$(BUILD_DIR)/pippin-limits.env"; cmake --build "$(BUILD_DIR)" --target pippin_hello_app -j"$PIPPIN_BUILD_JOBS"'
 
 kernel: preflight
 	cmake -S . -B $(BUILD_DIR) -G "Unix Makefiles"

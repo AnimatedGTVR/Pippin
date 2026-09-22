@@ -31,7 +31,8 @@ builds.
 
 ```sh
 make specs      # inspect host resources and calculate safe limits
-make            # preflight + configure + compile build/kernel.elf (Multiboot)
+make            # preflight + native app + build/kernel.elf (Multiboot)
+make apps       # build build/apps/native/pippin-hello.elf
 make run        # Multiboot boot in a QEMU window; serial log in terminal
 make run-shell  # alias for the native desktop
 make run-ui     # alias for the native desktop
@@ -56,7 +57,13 @@ qemu-system-x86_64 -machine q35 -m 256M -display gtk -serial stdio \
 `make run` boots directly into the native graphical desktop. The shell model
 is compiled as C++, exported through a small C ABI, and rendered by the Rust
 compositor. Press Esc to return to the text command shell; run `desktop` to
-reopen the graphics desktop. No host .NET process is required.
+reopen the graphics desktop. No host .NET process is required. The serial shell provides `apps` and `run hello` to exercise the ELF64 app loader.
+
+## Native application build
+
+Pippin builds `apps/native/hello.cpp` as a freestanding static ELF64 executable at `build/apps/native/pippin-hello.elf`. A generated assembly wrapper uses `.incbin` to embed that exact ELF in the kernel image for the bootstrap loader test.
+
+The loader itself lives in `kernel/rust/src/elf.rs` and is not tied to the embedded source. It accepts arbitrary ELF bytes matching the supported format, so future FAT32/package/module loading can use the same code path. See `docs/apps.md`.
 
 ## Host preflight and resource limits
 

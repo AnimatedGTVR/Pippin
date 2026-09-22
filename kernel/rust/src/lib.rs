@@ -29,6 +29,7 @@ mod display;
 mod apic;
 mod ffi;
 mod event;
+mod elf;
 mod file;
 mod gdt;
 mod heap;
@@ -237,8 +238,19 @@ fn core_main(mb_info: Option<u32>) -> ! {
     let handle = zones::alloc(zone, 7).expect("boot object handle");
     let _ = zones::write(handle, b"Pippin");
     BOOT_HANDLE.store(handle, Ordering::Relaxed);
-    let user_ready = syscall::spawn_demo(port);
-    let _ = writeln!(console, "  syscall:          ring-3 demo ready={user_ready}");
+    let app_image = elf::embedded_hello();
+    let app_loaded = match elf::load_and_spawn(app_image, port) {
+        Ok(report) => {
+            let _ = writeln!(console,
+                "  app:              ELF64 loaded entry={:#x}, {} pages, {} bytes",
+                report.entry, report.mapped_pages, report.image_bytes);
+            true
+        }
+        Err(error) => {
+            let _ = writeln!(console, "  app:              ELF64 load FAILED: {:?}", error);
+            false
+        }
+    };
     let _ = writeln!(console, "  sched:            boot slot={} pid={}, 2 threads ready",
                      sched::current_slot().main_thread, sched::current_pid());
 
@@ -252,29 +264,31 @@ fn core_main(mb_info: Option<u32>) -> ! {
                      sched::switches(), sched::task_ticks(1), sched::task_ticks(2),
                      WORK_A.load(Ordering::Relaxed), WORK_B.load(Ordering::Relaxed));
     let mut events = 0;
-    let mut user_event = false;
+    let mut app_event = false;
     let mut timer_events = 0;
     while let Some(event) = event::poll() {
         events += 1;
         if event.source_pid == 0 && event.kind == event::TIMER { timer_events += 1; }
         if event.source_pid == 4 && event.kind == 9 && event.value == 0xC0DE {
-            user_event = true;
+            app_event = true;
         }
     }
-    let _ = writeln!(console, "  ipc:              port={} events={} timers={} ring-3 event={}",
-                     port, events, timer_events, user_event);
-    let _ = writeln!(console, "  syscall:          ring-3 task exited={}", sched::task_dead(3));
+    let _ = writeln!(console, "  ipc:              port={} events={} timers={} native-app event={}",
+                     port, events, timer_events, app_event);
+    let _ = writeln!(console, "  app:              started={} exited={}",
+                     app_loaded, sched::task_dead(3));
     let object = zones::read(handle).expect("owned handle");
     let _ = writeln!(console, "  zones:            zone={} kind={} data={} denied={}",
                      zone, object.0, object.1[0] as char, HANDLE_DENIED.load(Ordering::Relaxed));
     let _ = zones::free(handle);
 
     let _ = writeln!(console, "Pippin command shell ready.");
-    let mut shell = cli::Shell::new(console, loaded_bundle);
+    let mut shell = cli::Shell::new(console, loaded_bundle, port);
     loop {
         let _ = ps2::poll(port);
         shell.poll_serial();
         shell.poll_bridge();
+        elf::reap_if_exited();
         while let Some(input) = event::poll() {
             if input.kind == ps2::KEY_EVENT {
                 shell.key_scancode(input.value as u8);

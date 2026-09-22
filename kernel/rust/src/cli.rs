@@ -4,7 +4,7 @@ use core::fmt::{self, Write};
 use alloc::vec::Vec;
 use crate::window_server::Event;
 
-use crate::{bridge, desktop, display, ffi, file, interrupts, mem, serial};
+use crate::{bridge, desktop, display, elf, ffi, file, interrupts, mem, serial};
 
 const LINE_CAPACITY: usize = 128;
 
@@ -57,12 +57,13 @@ pub struct Shell {
     extended: bool,
     last_was_cr: bool,
     bundle: Option<file::Bundle<'static>>,
+    event_port: u16,
     desktop: Option<desktop::Desktop>,
     bridge: bridge::Bridge,
 }
 
 impl Shell {
-    pub fn new(mut terminal: Terminal, bundle: Option<file::Bundle<'static>>) -> Self {
+    pub fn new(mut terminal: Terminal, bundle: Option<file::Bundle<'static>>, event_port: u16) -> Self {
         // The native C++ shell is now the default boot experience. The text
         // command shell remains available with Esc / the `console` command.
         let desktop = desktop::Desktop::open();
@@ -72,7 +73,7 @@ impl Shell {
         let mut shell = Self {
             terminal, line: [0; LINE_CAPACITY], len: 0,
             shift: false, alt: false, terminal_capture: false, caps: false, extended: false, last_was_cr: false,
-            bundle, desktop, bridge: bridge::Bridge::new(),
+            bundle, event_port, desktop, bridge: bridge::Bridge::new(),
         };
         let _ = writeln!(shell.terminal, "Pippin command shell (native C++ desktop)");
         if desktop_ready {
@@ -266,7 +267,7 @@ impl Shell {
             "" => {}
             "help" => {
                 let _ = writeln!(self.terminal,
-                    "help  fetch  desktop  console  clear  uname  uptime  mem  pci  ls  cat  echo");
+                    "help  fetch  desktop  console  clear  uname  uptime  mem  pci  apps  run  ls  cat  echo");
             }
             "desktop" => {
                 if self.desktop.is_some() {
@@ -304,6 +305,21 @@ impl Shell {
                     if let Some((vendor, product, class, subclass)) = ffi::pci_device(index) {
                         let _ = writeln!(self.terminal, "  {:02} {:04x}:{:04x} class {:02x}:{:02x} parent {}",
                             index, vendor, product, class, subclass, ffi::pci_parent(index));
+                    }
+                }
+            }
+            "apps" => {
+                let _ = writeln!(self.terminal, "hello    native ELF64 C++ app");
+            }
+            "run hello" | "run /apps/hello" => {
+                match elf::load_and_spawn(elf::embedded_hello(), self.event_port) {
+                    Ok(report) => {
+                        let _ = writeln!(self.terminal,
+                            "started hello: entry={:#x}, pages={}, image={} bytes",
+                            report.entry, report.mapped_pages, report.image_bytes);
+                    }
+                    Err(error) => {
+                        let _ = writeln!(self.terminal, "run: hello: {:?}", error);
                     }
                 }
             }

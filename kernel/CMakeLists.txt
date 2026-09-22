@@ -5,7 +5,8 @@ add_subdirectory(cpp)
 add_executable(kernel.elf
   "${CMAKE_CURRENT_SOURCE_DIR}/asm/boot.S"
   "${CMAKE_CURRENT_SOURCE_DIR}/asm/isr.S")
-target_sources(kernel.elf PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/asm/syscall.S")
+target_sources(kernel.elf PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/asm/syscall.S")
 
 # Archives reference each other across the language boundary (e.g. Rust
 # calls pippin_driver_count while C++ calls pippin_core_main), so link them
@@ -15,6 +16,7 @@ target_link_libraries(kernel.elf PRIVATE
     pippin_kernel_cpp   # C++ boot runtime / subsystem glue
     pippin_kernel_c     # C glue: libc-style stubs used by C++ and Rust
     pippin_drivers      # driver layer (currently a stub)
+    pippin_app_blob      # embedded native ELF image
     "${PIPPIN_RUST_LIB}"  # Rust kernel core (staticlib)
   -Wl,--end-group
 )
@@ -29,7 +31,7 @@ target_link_options(kernel.elf PRIVATE
 )
 
 # The kernel ELF depends on cargo having produced the Rust archive.
-add_dependencies(kernel.elf rust-kernel)
+add_dependencies(kernel.elf rust-kernel pippin_hello_app)
 
 # Place the final artifact at build/kernel.elf (scripts/Makefile expect it).
 set_target_properties(kernel.elf PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
@@ -42,10 +44,10 @@ add_executable(kernel-limine.elf
 target_include_directories(kernel-limine.elf PRIVATE "${CMAKE_SOURCE_DIR}/kernel/c/include")
 target_link_libraries(kernel-limine.elf PRIVATE
   -Wl,--start-group pippin_kernel_cpp pippin_kernel_c pippin_drivers
-  "${PIPPIN_RUST_LIB}" -Wl,--end-group)
+  pippin_app_blob "${PIPPIN_RUST_LIB}" -Wl,--end-group)
 target_link_options(kernel-limine.elf PRIVATE
   -no-pie -nostdlib -Wl,--gc-sections -Wl,--build-id=none
   -Wl,-Map=${CMAKE_BINARY_DIR}/kernel-limine.map
   -T "${CMAKE_SOURCE_DIR}/kernel/limine-linker.ld")
-add_dependencies(kernel-limine.elf rust-kernel)
+add_dependencies(kernel-limine.elf rust-kernel pippin_hello_app)
 set_target_properties(kernel-limine.elf PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
