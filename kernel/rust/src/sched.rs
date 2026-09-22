@@ -151,39 +151,38 @@ unsafe fn schedule(frame: *mut IntFrame, requeue: bool) -> *mut IntFrame {
 /// Add one ring-3 thread to the run queue after its code and stack are mapped.
 pub fn spawn_user(rip: u64, user_rsp: u64, port: u16) -> bool {
     let flags = cpu::irq_save();
-    let mut spawned = false;
-    unsafe {
+    let spawned = unsafe {
         let index = 3;
         if TASKS[index].state != 0 && TASKS[index].state != DEAD {
-            cpu::irq_restore(flags);
-            return false;
+            false
+        } else {
+            let task = &mut TASKS[index];
+            let top = ((task.stack.0.as_mut_ptr() as usize + STACK_SIZE) & !15) - 8;
+            let frame = (top - core::mem::size_of::<IntFrame>()) as *mut IntFrame;
+            ptr::write_bytes(frame as *mut u8, 0, core::mem::size_of::<IntFrame>());
+            (*frame).rip = rip;
+            (*frame).cs = 0x33;
+            (*frame).rflags = 0x202;
+            (*frame).rsp = user_rsp;
+            (*frame).ss = 0x2b;
+            (*frame).rdi = port as u64;
+            task.frame = frame;
+            task.stack_top = top as u64;
+            task.slot = index as u8;
+            task.state = READY;
+            asm!("fninit", options(nomem, nostack));
+            asm!("fxsave64 [{}]", in(reg) task.fx.0.as_mut_ptr(), options(nostack));
+            SLOTS[index] = ProcessSlot {
+                pid: (index + 1) as u32,
+                main_thread: index as u8,
+                event_port: port,
+                zone: 0,
+            };
+            task.ticks = 0;
+            enqueue(index);
+            true
         }
-        let task = &mut TASKS[index];
-        let top = ((task.stack.0.as_mut_ptr() as usize + STACK_SIZE) & !15) - 8;
-        let frame = (top - core::mem::size_of::<IntFrame>()) as *mut IntFrame;
-        ptr::write_bytes(frame as *mut u8, 0, core::mem::size_of::<IntFrame>());
-        (*frame).rip = rip;
-        (*frame).cs = 0x33;
-        (*frame).rflags = 0x202;
-        (*frame).rsp = user_rsp;
-        (*frame).ss = 0x2b;
-        (*frame).rdi = port as u64;
-        task.frame = frame;
-        task.stack_top = top as u64;
-        task.slot = index as u8;
-        task.state = READY;
-        asm!("fninit", options(nomem, nostack));
-        asm!("fxsave64 [{}]", in(reg) task.fx.0.as_mut_ptr(), options(nostack));
-        SLOTS[index] = ProcessSlot {
-            pid: (index + 1) as u32,
-            main_thread: index as u8,
-            event_port: port,
-            zone: 0,
-        };
-        task.ticks = 0;
-        enqueue(index);
-        spawned = true;
-    }
+    };
     cpu::irq_restore(flags);
     spawned
 }
