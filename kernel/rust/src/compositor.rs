@@ -529,43 +529,60 @@ impl Compositor {
 
     fn window(&mut self, window: Window, focused: bool) {
         if window.role == b'P' {
-            // Hideo-inspired taskbar. Control geometry now comes from the C++
-            // Control Manager instead of being hand-placed in the compositor.
+            // Hideo-inspired taskbar. Geometry and focusability come from the
+            // C++ Control Manager; Rust only paints the current interaction state.
             self.fill_rect(window.x, window.y, window.width, window.height, SHELL_DARK);
             self.fill_rect(window.x, window.y + window.height - 1, window.width, 1, SHELL_BORDER);
 
             let managed = window.rows.iter().any(|row| row.width > 0 && row.height > 0);
             if managed {
-                for row in window.rows.iter().take(8) {
+                for (index, row) in window.rows.iter().take(8).enumerate() {
                     if row.width <= 0 || row.height <= 0 { continue; }
 
+                    let (hovered, pressed, control_focused) = self.control_state(&window.id, index);
+                    let disabled = row.flags & CONTROL_FLAG_DISABLED != 0;
                     let x = window.x + row.x;
                     let y = window.y + row.y;
-                    let fill = match row.style {
+
+                    let base = match row.style {
                         CONTROL_STYLE_ACCENT => CHROME_ACCENT,
                         _ => SHELL_SURFACE,
                     };
+                    let fill = if disabled {
+                        SHELL_DISABLED
+                    } else if pressed {
+                        SHELL_SURFACE_PRESSED
+                    } else if hovered {
+                        SHELL_SURFACE_HOVER
+                    } else {
+                        base
+                    };
+                    let border = if control_focused { CHROME_ACCENT } else { SHELL_BORDER };
+                    let text_color = if disabled { 0x006f7983 } else { SHELL_TEXT };
 
-                    self.rounded_rect(x, y, row.width, row.height, fill, SHELL_BORDER);
+                    self.rounded_rect(x, y, row.width, row.height, fill, border);
 
                     match row.style {
                         CONTROL_STYLE_SEARCH => {
-                            self.fill_rect(x + 16, y + 11, 10, 10, CHROME_ACCENT);
-                            self.text(x + 36, y + 10, &row.text, 1, SHELL_TEXT);
+                            self.fill_rect(x + 16, y + 11, 10, 10,
+                                if disabled { 0x006f7983 } else { CHROME_ACCENT });
+                            self.text(x + 36, y + 10, &row.text, 1, text_color);
                         }
                         CONTROL_STYLE_STATUS => {
-                            self.fill_rect(x + 16, y + 11, 10, 8, 0x005bc0eb);
-                            self.fill_rect(x + 34, y + 9, 6, 12, 0x00d5dae0);
-                            self.fill_rect(x + 48, y + 10, 16, 10, 0x0089d185);
-                            self.text(x + 76, y + 10, &row.text, 1, SHELL_MUTED);
+                            let icon = if disabled { 0x006f7983 } else { 0x00d5dae0 };
+                            self.fill_rect(x + 16, y + 11, 10, 8, icon);
+                            self.fill_rect(x + 34, y + 9, 6, 12, icon);
+                            self.fill_rect(x + 48, y + 10, 16, 10, icon);
+                            self.text(x + 76, y + 10, &row.text, 1,
+                                      if disabled { 0x006f7983 } else { SHELL_MUTED });
                         }
                         CONTROL_STYLE_SUBTLE => {
                             let text_width = row.text.len() as i32 * 6;
                             self.text(x + (row.width - text_width) / 2, y + 10,
-                                      &row.text, 1, SHELL_TEXT);
+                                      &row.text, 1, text_color);
                         }
                         _ => {
-                            self.text(x + 16, y + 10, &row.text, 1, SHELL_TEXT);
+                            self.text(x + 16, y + 10, &row.text, 1, text_color);
                         }
                     }
                 }
@@ -589,8 +606,6 @@ impl Compositor {
         }
 
         if window.role == b'D' {
-            // Floating launcher dock. The stepped rounded rectangles are the
-            // bootstrap rasterizer's approximation of Hideo's soft radii.
             self.rounded_rect(window.x + 5, window.y + 7, window.width, window.height,
                               0x0010151a, 0x0010151a);
             self.rounded_rect(window.x, window.y, window.width, window.height,
@@ -603,29 +618,42 @@ impl Compositor {
                 let tile_w = if managed { row.width } else { 104 };
                 let tile_h = if managed { row.height } else { 52 };
 
-                // style=2 is the Control Manager's TILE style. Unknown styles
-                // deliberately fall back to the same restrained shell surface.
-                let tile_fill = match row.style {
+                let (hovered, pressed, control_focused) = self.control_state(&window.id, index);
+                let disabled = row.flags & CONTROL_FLAG_DISABLED != 0;
+                let base = match row.style {
                     CONTROL_STYLE_ACCENT => CHROME_ACCENT,
                     _ => SHELL_SURFACE,
                 };
-                self.rounded_rect(tile_x, tile_y, tile_w, tile_h, tile_fill, SHELL_BORDER);
+                let tile_fill = if disabled {
+                    SHELL_DISABLED
+                } else if pressed {
+                    SHELL_SURFACE_PRESSED
+                } else if hovered {
+                    SHELL_SURFACE_HOVER
+                } else {
+                    base
+                };
+                let tile_border = if control_focused { CHROME_ACCENT } else { SHELL_BORDER };
+                self.rounded_rect(tile_x, tile_y, tile_w, tile_h, tile_fill, tile_border);
 
-                // Bootstrap icon placeholder. Icon resources will become their
-                // own manager; the Control Manager only owns control geometry.
                 let icon_x = tile_x + 10;
                 let icon_y = tile_y + ((tile_h - 30) / 2).max(0);
-                let icon_color = match index {
-                    0 => 0x004f8fdc,
-                    1 => 0x0057a773,
-                    _ => 0x00886bd8,
+                let icon_color = if disabled {
+                    0x00525b64
+                } else {
+                    match index {
+                        0 => 0x004f8fdc,
+                        1 => 0x0057a773,
+                        _ => 0x00886bd8,
+                    }
                 };
                 self.rounded_rect(icon_x, icon_y, 30, 30, icon_color, icon_color);
                 let glyph = match index { 0 => "A", 1 => "F", _ => "S" };
-                self.text(icon_x + 9, icon_y + 9, glyph, 1, 0x00ffffff);
+                self.text(icon_x + 9, icon_y + 9, glyph, 1,
+                          if disabled { 0x00929aa2 } else { 0x00ffffff });
 
                 self.text(tile_x + 49, tile_y + ((tile_h - 7) / 2).max(0),
-                          &row.text, 1, SHELL_TEXT);
+                          &row.text, 1, if disabled { 0x00717a83 } else { SHELL_TEXT });
             }
             return;
         }
