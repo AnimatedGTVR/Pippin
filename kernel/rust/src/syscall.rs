@@ -9,9 +9,7 @@ const IA32_EFER: u32 = 0xC000_0080;
 const IA32_STAR: u32 = 0xC000_0081;
 const IA32_LSTAR: u32 = 0xC000_0082;
 const IA32_FMASK: u32 = 0xC000_0084;
-const USER_CODE: u64 = 0x0040_0000;
-const USER_STACK: u64 = 0x0050_0000;
-const USER_MMAP: u64 = 0x0060_0000;
+const USER_MMAP: u64 = 0x0000_0001_0800_0000;
 static USER_MAPPED: AtomicBool = AtomicBool::new(false);
 
 extern "C" {
@@ -29,11 +27,7 @@ pub unsafe fn init() {
 }
 
 fn user_range(ptr: u64, len: u64) -> bool {
-    let Some(end) = ptr.checked_add(len) else { return false; };
-    (ptr >= USER_CODE && end <= USER_CODE + 4096)
-        || (ptr >= USER_STACK && end <= USER_STACK + 4096)
-        || (USER_MAPPED.load(Ordering::Relaxed)
-            && ptr >= USER_MMAP && end <= USER_MMAP + 4096)
+    mm::user_range_mapped(ptr, len)
 }
 
 /// Dispatch arguments use RAX for the number and RDI, RSI, RDX for three
@@ -73,19 +67,3 @@ pub extern "C" fn pippin_syscall_dispatch(number: u64, a0: u64, a1: u64, a2: u64
     }
 }
 
-/// Copy the small test program to a user page and enqueue its ring-3 thread.
-pub fn spawn_demo(port: u16) -> bool {
-    let start = unsafe { &pippin_user_demo_start as *const u8 };
-    let end = unsafe { &pippin_user_demo_end as *const u8 };
-    let len = end as usize - start as usize;
-    if len == 0 || len > 4096 { return false; }
-    let Some(code_phys) = mem::alloc_zeroed_frame() else { return false; };
-    let Some(stack_phys) = mem::alloc_zeroed_frame() else { return false; };
-    unsafe { core::ptr::copy_nonoverlapping(start, code_phys as *mut u8, len); }
-    if mm::map_user_page(USER_CODE, code_phys).is_none()
-        || mm::map_user_page(USER_STACK, stack_phys).is_none() {
-        return false;
-    }
-    sched::spawn_user(USER_CODE, USER_STACK + 4096 - 8, port);
-    true
-}
