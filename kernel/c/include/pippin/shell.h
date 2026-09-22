@@ -26,6 +26,7 @@ typedef struct pippin_shell_item {
 typedef struct pippin_shell_surface {
     const char* id;
     uint8_t role;
+    uint8_t visible;
     int32_t x;
     int32_t y;
     int32_t width;
