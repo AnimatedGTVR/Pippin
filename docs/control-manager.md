@@ -1,7 +1,7 @@
 # Control Manager
 
 Pippin's Control Manager is the first reusable C++ UI manager for the native
-desktop shell. Its first consumer is the Dock.
+desktop shell. Its first consumers are the Dock and top Panel.
 
 The design is informed by Skift's Karm UI layer, especially these ideas:
 
@@ -9,6 +9,7 @@ The design is informed by Skift's Karm UI layer, especially these ideas:
 - group/proxy composition instead of one giant widget switch
 - `flow` layout for horizontal and vertical children
 - fixed sizing plus grow/flexible children
+- insets and alignment as composable layout operations
 - control-local input bounds rather than shell-specific hit-test constants
 - style metadata carried with the control instead of inferred from its label
 
@@ -19,7 +20,7 @@ those features yet.
 
 ## Current API
 
-The first implementation lives in:
+The implementation lives in:
 
 - `kernel/cpp/include/pippin/control.hh`
 - `kernel/cpp/src/shell.cc`
@@ -38,42 +39,87 @@ A `ControlSpec` describes a child before layout. `ui::flow()` consumes a
 `Flow` plus a fixed array of specs and returns a compile-time `ControlSet`
 with final local rectangles.
 
-Example shape:
+## Layout primitives
+
+### Flow
+
+`ui::flow()` supports horizontal and vertical layout. Fixed children consume
+their basis first, then remaining main-axis space is distributed between grow
+children by weight.
+
+### Grow
+
+`ui::grow()` and `ui::spacer()` represent flexible children. A grow child may
+also carry a minimum basis before leftover space is distributed.
+
+The top Panel uses two grow spacers around its center control so the Pippin
+identity block remains centered even though the left and right controls have
+different content.
+
+### Insets
+
+`ui::inset()` shrinks a `Rect` or `Flow` using top/right/bottom/left
+insets. Convenience constructors support all-side and symmetric insets.
+
+The Dock now starts with its full 368x68 surface and derives its inner
+344x52 control region through `Insets::symmetric(8, 12)` instead of embedding
+that offset directly in its flow rectangle.
+
+### Align
+
+`ui::cross()` constrains a control on the cross axis and applies
+`START`, `CENTER`, `END`, or `FILL` alignment.
+
+The top Panel flows across the full 48 px bar while its visible controls request
+34 px height with centered cross-axis alignment, producing the 7 px vertical
+padding automatically.
+
+## Example
 
 ```cpp
 constexpr ui::ControlSpec specs[] = {
-    ui::fixed("Apps", "launcher.open", 'b', ui::ControlStyle::TILE, 104),
-    ui::fixed("Files", "files.open", 'b', ui::ControlStyle::TILE, 104),
-    ui::fixed("Settings", "settings.open", 'b', ui::ControlStyle::TILE, 104),
+    ui::cross(
+        ui::fixed("Search", "launcher.open", 'b', ui::ControlStyle::SEARCH, 220),
+        34
+    ),
+    ui::spacer(),
+    ui::cross(
+        ui::fixed("Pippin", "", 'l', ui::ControlStyle::SUBTLE, 184),
+        34
+    ),
+    ui::spacer(),
+    ui::cross(
+        ui::fixed("WiFi  Vol  Bat", "settings.open", 'b', ui::ControlStyle::STATUS, 220),
+        34
+    ),
 };
 
 constexpr auto controls = ui::flow(
-    ui::Flow{
-        .frame = {12, 8, 344, 52},
-        .axis = ui::Axis::HORIZONTAL,
-        .gap = 16,
-    },
+    ui::inset(
+        ui::Flow{
+            .frame = {0, 0, 1024, 48},
+            .axis = ui::Axis::HORIZONTAL,
+            .gap = 0,
+        },
+        ui::Insets::symmetric(0, 12)
+    ),
     specs
 );
 ```
 
-The manager also supports grow-weighted children. Remaining main-axis space is
-distributed by grow weight after fixed bases and gaps are accounted for.
-
 ## ABI v2
 
-Shell ABI v2 adds per-item layout metadata:
+Shell ABI v2 carries per-item:
 
 - style
 - x/y
 - width/height
 
 A zero-sized item still means legacy row layout, which lets Pippin migrate
-surfaces one at a time instead of rewriting the whole shell at once.
+surfaces one at a time.
 
-The Dock is the first migrated surface. Rust now renders and hit-tests Dock
-controls using rectangles produced by C++. The compositor no longer hardcodes
-the Apps/Files/Settings x ranges.
+Both the Dock and Panel now render and hit-test controls using rectangles
+calculated by C++. The compositor no longer owns their item placement.
 
 ## Why this boundary
 
@@ -86,13 +132,13 @@ For now:
 That matches Pippin's current architecture and keeps the manager useful before
 the C++ shell moves fully into ring-3 ELF processes.
 
-## Next pieces for this manager
+## Next pieces
 
-The next Control Manager work should stay focused:
+The Control Manager should stay focused:
 
-1. move the top panel to manager-provided bounds
-2. add hover/pressed/disabled control state
-3. add `insets`, `align`, and `grow` decorators similar in spirit to Karm
-4. move generic window rows/buttons away from hardcoded 42 px spacing
+1. add hover, pressed, and disabled control state
+2. move generic window rows/buttons away from hardcoded 42 px spacing
+3. add reusable group/proxy node composition instead of flat control arrays
+4. add focus and keyboard activation
 5. once user apps can own surfaces directly, move this same C++ manager into the
    native app/toolkit layer

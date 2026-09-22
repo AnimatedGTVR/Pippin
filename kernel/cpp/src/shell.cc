@@ -24,10 +24,34 @@ constexpr pippin_shell_item legacyItem(const char* text, const char* action, uin
     return {text, action, kind, PIPPIN_CONTROL_STYLE_PLAIN, 0, 0, 0, 0};
 }
 
+constexpr ui::ControlSpec kPanelSpecs[] = {
+    ui::cross(ui::fixed("Search", "launcher.open", 'b', ui::ControlStyle::SEARCH, 220), 34),
+    ui::spacer(),
+    ui::cross(ui::fixed("Pippin", "", 'l', ui::ControlStyle::SUBTLE, 184), 34),
+    ui::spacer(),
+    ui::cross(ui::fixed("WiFi  Vol  Bat", "settings.open", 'b', ui::ControlStyle::STATUS, 220), 34),
+};
+
+constexpr auto kPanelControls = ui::flow(
+    ui::inset(
+        ui::Flow{
+            .frame = {0, 0, 1024, 48},
+            .axis = ui::Axis::HORIZONTAL,
+            .gap = 0,
+        },
+        ui::Insets::symmetric(0, 12)
+    ),
+    kPanelSpecs
+);
+
+static_assert(kPanelControls[0].frame.x == 12 && kPanelControls[0].frame.y == 7);
+static_assert(kPanelControls[2].frame.x == 420 && kPanelControls[2].frame.width == 184);
+static_assert(kPanelControls[4].frame.x == 792 && kPanelControls[4].frame.width == 220);
+
 constexpr pippin_shell_item kPanelItems[] = {
-    legacyItem("Search", "launcher.open", 'b'),
-    legacyItem("Pippin", "", 'l'),
-    legacyItem("WiFi  Vol  Bat", "settings.open", 'b'),
+    shellItem(kPanelControls[0]),
+    shellItem(kPanelControls[2]),
+    shellItem(kPanelControls[4]),
 };
 
 constexpr ui::ControlSpec kDockSpecs[] = {
@@ -37,11 +61,14 @@ constexpr ui::ControlSpec kDockSpecs[] = {
 };
 
 constexpr auto kDockControls = ui::flow(
-    ui::Flow{
-        .frame = {12, 8, 344, 52},
-        .axis = ui::Axis::HORIZONTAL,
-        .gap = 16,
-    },
+    ui::inset(
+        ui::Flow{
+            .frame = {0, 0, 368, 68},
+            .axis = ui::Axis::HORIZONTAL,
+            .gap = 16,
+        },
+        ui::Insets::symmetric(8, 12)
+    ),
     kDockSpecs
 );
 
