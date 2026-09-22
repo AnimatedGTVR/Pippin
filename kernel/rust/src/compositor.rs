@@ -19,6 +19,12 @@ const CHROME_BORDER: u32 = 0x009aa2a8;
 const CHROME_ACCENT: u32 = 0x003d78a8;
 const CHROME_CLOSE: u32 = 0x00d95d55;
 const CHROME_SHADOW: u32 = 0x00151b22;
+const SHELL_DARK: u32 = 0x0014191f;
+const SHELL_SURFACE: u32 = 0x00222931;
+const SHELL_SURFACE_HOVER: u32 = 0x002d3540;
+const SHELL_BORDER: u32 = 0x00414b57;
+const SHELL_TEXT: u32 = 0x00f3f5f7;
+const SHELL_MUTED: u32 = 0x00aeb8c2;
 const HEADER_HEIGHT: i32 = 44;
 
 #[derive(Clone)]
@@ -62,23 +68,42 @@ impl Compositor {
             left_down: false, drag: None,
         };
 
-        // The dock is part of the desktop itself, not something that should
-        // disappear just because the host C# shell/COM2 bridge failed to
-        // connect. Keep a small native fallback here. If the C# shell later
-        // sends S|dock|..., command() finds this same ID and replaces the rows
-        // with the managed shell version without creating a duplicate dock.
+        // Native shell fallbacks are always visible, even when the host C#
+        // process or COM2 bridge is unavailable. The managed shell reuses the
+        // same IDs, so it can replace the content without creating duplicates.
+        // Layout is inspired by Hideo's restrained shell hierarchy: a dark
+        // top taskbar with pill groups and a compact floating launcher dock.
+        compositor.windows.push(Window {
+            id: "panel".to_string(),
+            role: b'P',
+            x: 0,
+            y: 0,
+            width: WIDTH as i32,
+            height: 48,
+            title: "Panel".to_string(),
+            rows: vec![
+                Row { text: "Search".to_string(), action: "launcher.open".to_string(), kind: b'b' },
+                Row { text: "Pippin".to_string(), action: String::new(), kind: b'l' },
+                Row { text: "WiFi  Vol  Bat".to_string(), action: "settings.open".to_string(), kind: b'b' },
+            ],
+            native: false,
+            maximized: false,
+            minimized: false,
+            restore: None,
+        });
+
         compositor.windows.push(Window {
             id: "dock".to_string(),
             role: b'D',
-            x: 330,
-            y: 696,
-            width: 364,
-            height: 58,
+            x: 328,
+            y: 688,
+            width: 368,
+            height: 68,
             title: "Dock".to_string(),
             rows: vec![
-                Row { text: "Apps".to_string(), action: "launcher.restore".to_string(), kind: b'b' },
-                Row { text: "Files".to_string(), action: "files.restore".to_string(), kind: b'b' },
-                Row { text: "Settings".to_string(), action: "settings.restore".to_string(), kind: b'b' },
+                Row { text: "Apps".to_string(), action: "launcher.open".to_string(), kind: b'b' },
+                Row { text: "Files".to_string(), action: "files.open".to_string(), kind: b'b' },
+                Row { text: "Settings".to_string(), action: "settings.open".to_string(), kind: b'b' },
             ],
             native: false,
             maximized: false,
@@ -166,6 +191,10 @@ impl Compositor {
         if let Some(index) = self.windows.iter().position(|window| window.id == id) {
             let mut window = self.windows.remove(index);
             window.role = role;
+            window.x = x;
+            window.y = y;
+            window.width = width;
+            window.height = height;
             window.title = title.to_string();
             window.rows = parsed_rows;
             window.minimized = false;
@@ -250,14 +279,27 @@ impl Compositor {
                 return None;
             }
         }
-        let row_top = if matches!(window.role, b'P' | b'D') { 7 } else { 62 };
-        let row_step = if matches!(window.role, b'P' | b'D') { 118 } else { 42 };
-        let row = if matches!(window.role, b'P' | b'D') {
-            ((self.cursor_x - window.x - 16) / row_step) as usize
-        } else { ((self.cursor_y - window.y - row_top) / row_step) as usize };
-        let in_rows = if matches!(window.role, b'P' | b'D') {
-            self.cursor_y >= window.y + row_top && self.cursor_y < window.y + window.height - 4
-        } else { self.cursor_y >= window.y + row_top };
+        let (row, in_rows) = if window.role == b'D' {
+            let local_x = self.cursor_x - window.x;
+            let local_y = self.cursor_y - window.y;
+            let row = if (12..=116).contains(&local_x) { 0 }
+                else if (132..=236).contains(&local_x) { 1 }
+                else if (252..=356).contains(&local_x) { 2 }
+                else { usize::MAX };
+            (row, (8..60).contains(&local_y))
+        } else if window.role == b'P' {
+            let local_x = self.cursor_x - window.x;
+            let local_y = self.cursor_y - window.y;
+            let row = if (12..=210).contains(&local_x) { 0 }
+                else if (420..=604).contains(&local_x) { 1 }
+                else if (774..=1012).contains(&local_x) { 2 }
+                else { usize::MAX };
+            (row, (6..42).contains(&local_y))
+        } else {
+            let row_top = 62;
+            (((self.cursor_y - window.y - row_top) / 42) as usize,
+             self.cursor_y >= window.y + row_top)
+        };
         let action = if in_rows { window.rows.get(row).map(|row| row.action.clone()) } else { None };
         if matches!(window.role, b'W' | b'L') && !window.maximized
             && self.cursor_y < window.y + HEADER_HEIGHT {
@@ -293,24 +335,75 @@ impl Compositor {
     }
 
     fn window(&mut self, window: Window, focused: bool) {
-        if matches!(window.role, b'P' | b'D' | b'N') {
-            // Desktop shell surfaces sit above the solid-blue wallpaper as distinct,
-            // lightweight pieces of the Pippin shell.
-            if window.role != b'P' {
-                self.fill_rect(window.x + 2, window.y + 3, window.width, window.height, CHROME_SHADOW);
+        if window.role == b'P' {
+            // Hideo-inspired taskbar: one quiet dark strip with three clear
+            // zones instead of a row of debug buttons.
+            self.fill_rect(window.x, window.y, window.width, window.height, SHELL_DARK);
+            self.fill_rect(window.x, window.y + window.height - 1, window.width, 1, SHELL_BORDER);
+
+            // Left search pill.
+            self.rounded_rect(window.x + 12, window.y + 7, 198, 34, SHELL_SURFACE, SHELL_BORDER);
+            self.fill_rect(window.x + 28, window.y + 18, 10, 10, CHROME_ACCENT);
+            if let Some(row) = window.rows.get(0) {
+                self.text(window.x + 48, window.y + 17, &row.text, 1, SHELL_TEXT);
             }
-            self.fill_rect(window.x, window.y, window.width, window.height,
-                           if window.role == b'P' { 0x00f5f7f8 } else { 0x00eef1f2 });
-            self.border(window.x, window.y, window.width, window.height,
-                        if window.role == b'P' { 0x00d4d9dd } else { 0x00b7bec3 });
+
+            // Center date/time/identity pill.
+            self.rounded_rect(window.x + 420, window.y + 7, 184, 34, SHELL_SURFACE, SHELL_BORDER);
+            if let Some(row) = window.rows.get(1) {
+                let text_width = row.text.len() as i32 * 6;
+                self.text(window.x + 512 - text_width / 2, window.y + 17, &row.text, 1, SHELL_TEXT);
+            }
+
+            // Right system status pill.
+            self.rounded_rect(window.x + 774, window.y + 7, 238, 34, SHELL_SURFACE, SHELL_BORDER);
+            self.fill_rect(window.x + 790, window.y + 18, 10, 8, 0x005bc0eb);
+            self.fill_rect(window.x + 808, window.y + 16, 6, 12, 0x00d5dae0);
+            self.fill_rect(window.x + 822, window.y + 17, 16, 10, 0x0089d185);
+            if let Some(row) = window.rows.get(2) {
+                self.text(window.x + 850, window.y + 17, &row.text, 1, SHELL_MUTED);
+            }
+            return;
+        }
+
+        if window.role == b'D' {
+            // Floating launcher dock. The stepped rounded rectangles are the
+            // bootstrap rasterizer's approximation of Hideo's soft radii.
+            self.rounded_rect(window.x + 5, window.y + 7, window.width, window.height,
+                              0x0010151a, 0x0010151a);
+            self.rounded_rect(window.x, window.y, window.width, window.height,
+                              SHELL_DARK, SHELL_BORDER);
+
+            for (index, row) in window.rows.iter().take(3).enumerate() {
+                let tile_x = window.x + 12 + index as i32 * 120;
+                let tile_y = window.y + 8;
+                self.rounded_rect(tile_x, tile_y, 104, 52, SHELL_SURFACE, SHELL_BORDER);
+
+                // App-icon tile.
+                let icon_x = tile_x + 10;
+                let icon_y = tile_y + 11;
+                let icon_color = match index {
+                    0 => 0x004f8fdc,
+                    1 => 0x0057a773,
+                    _ => 0x00886bd8,
+                };
+                self.rounded_rect(icon_x, icon_y, 30, 30, icon_color, icon_color);
+                let glyph = match index { 0 => "A", 1 => "F", _ => "S" };
+                self.text(icon_x + 9, icon_y + 9, glyph, 1, 0x00ffffff);
+
+                self.text(tile_x + 49, tile_y + 20, &row.text, 1, SHELL_TEXT);
+            }
+            return;
+        }
+
+        if window.role == b'N' {
+            self.rounded_rect(window.x + 4, window.y + 5, window.width, window.height,
+                              CHROME_SHADOW, CHROME_SHADOW);
+            self.rounded_rect(window.x, window.y, window.width, window.height,
+                              SHELL_DARK, SHELL_BORDER);
             for (index, row) in window.rows.iter().enumerate() {
-                let x = window.x + 16 + index as i32 * 118;
-                if x + 90 > window.x + window.width { break; }
-                if !row.action.is_empty() {
-                    self.fill_rect(x - 5, window.y + 6, 105, window.height - 12, 0x00ffffff);
-                    self.border(x - 5, window.y + 6, 105, window.height - 12, 0x00cbd1d5);
-                }
-                self.text(x, window.y + 12, &row.text, 2, CHROME_INK);
+                self.text(window.x + 18, window.y + 18 + index as i32 * 18,
+                          &row.text, 1, SHELL_TEXT);
             }
             return;
         }
@@ -459,6 +552,29 @@ impl Compositor {
         for row in top..bottom {
             self.pixels[row * WIDTH + left..row * WIDTH + right].fill(color);
         }
+    }
+
+    fn rounded_rect(&mut self, x: i32, y: i32, width: i32, height: i32,
+                    fill: u32, border: u32) {
+        if width < 8 || height < 8 {
+            self.fill_rect(x, y, width, height, fill);
+            self.border(x, y, width, height, border);
+            return;
+        }
+
+        // 4 px stepped radius: deliberately simple enough for the bootstrap
+        // software rasterizer while reading much softer than a hard box.
+        self.fill_rect(x + 4, y, width - 8, 1, border);
+        self.fill_rect(x + 2, y + 1, width - 4, 1, border);
+        self.fill_rect(x + 1, y + 2, width - 2, 1, border);
+        self.fill_rect(x, y + 3, width, height - 6, border);
+        self.fill_rect(x + 1, y + height - 3, width - 2, 1, border);
+        self.fill_rect(x + 2, y + height - 2, width - 4, 1, border);
+        self.fill_rect(x + 4, y + height - 1, width - 8, 1, border);
+
+        self.fill_rect(x + 4, y + 1, width - 8, height - 2, fill);
+        self.fill_rect(x + 2, y + 2, width - 4, height - 4, fill);
+        self.fill_rect(x + 1, y + 3, width - 2, height - 6, fill);
     }
 
     fn border(&mut self, x: i32, y: i32, width: i32, height: i32, color: u32) {

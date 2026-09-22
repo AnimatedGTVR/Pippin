@@ -20,30 +20,29 @@ public sealed class Panel : Application
 {
     public override string Id => "org.pippin.panel";
     public override IEnumerable<Surface> CreateSurfaces() =>
-        [new("panel", SurfaceRole.Panel, "Panel", 0, 0, 1024, 44,
-            UiNode.Row(UiNode.Button("Pippin", "launcher.open"),
-                UiNode.Button("Apps", "launcher.open"),
-                UiNode.Button("Files", "files.open"),
-                UiNode.Button("Settings", "settings.open"),
-                UiNode.Button("Terminal", "terminal.open"),
-                UiNode.Label("WiFi  Sound  Battery")))];
+        [new("panel", SurfaceRole.Panel, "Panel", 0, 0, 1024, 48,
+            UiNode.Row(
+                UiNode.Button("Search", "launcher.open"),
+                UiNode.Label(DateTime.Now.ToString("MMM d  HH:mm")),
+                UiNode.Button("WiFi  Vol  100%", "settings.open")))];
 }
 
 public sealed class Dock : Application
 {
     public override string Id => "org.pippin.dock";
     public override IEnumerable<Surface> CreateSurfaces() =>
-        [new("dock", SurfaceRole.Dock, "Dock", 330, 696, 364, 58,
-            UiNode.Row(UiNode.Button("Apps", "launcher.restore"),
-                UiNode.Button("Files", "files.restore"),
-                UiNode.Button("Settings", "settings.restore")))];
+        [new("dock", SurfaceRole.Dock, "Dock", 328, 688, 368, 68,
+            UiNode.Row(
+                UiNode.Button("Apps", "launcher.open"),
+                UiNode.Button("Files", "files.open"),
+                UiNode.Button("Settings", "settings.open")))];
 }
 
 public sealed class Launcher : Application
 {
     public override string Id => "org.pippin.launcher";
     public override IEnumerable<Surface> CreateSurfaces() =>
-        [new("launcher", SurfaceRole.Launcher, "Applications", 24, 62, 340, 470,
+        [new("launcher", SurfaceRole.Launcher, "Applications", 262, 112, 500, 400,
             UiNode.Column(UiNode.Heading("Applications"),
                 UiNode.Search("Search apps", "launcher.search"), UiNode.Separator(),
                 UiNode.Card(UiNode.Button("Files", "files.open"),
@@ -99,7 +98,7 @@ public sealed class Notifications : Application
 {
     public override string Id => "org.pippin.notifications";
     public override IEnumerable<Surface> CreateSurfaces() =>
-        [new("notifications", SurfaceRole.Notification, "Notifications", 710, 54, 300, 96,
+        [new("notifications", SurfaceRole.Notification, "Notifications", 710, 58, 300, 96,
             UiNode.Label("Welcome to Pippin"))];
 }
 
