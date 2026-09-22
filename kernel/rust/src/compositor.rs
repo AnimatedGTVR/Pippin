@@ -291,6 +291,7 @@ impl Compositor {
             window.title = title.to_string();
             window.rows = parsed_rows;
             window.minimized = false;
+            Self::clamp_scroll(&mut window);
             self.windows.push(window);
         } else {
             if self.windows.len() >= MAX_WINDOWS { return false; }
@@ -775,13 +776,14 @@ impl Compositor {
                     window.height = HEIGHT as i32 - 116;
                     window.maximized = true;
                 }
+                Self::clamp_scroll(&mut window);
                 self.windows.push(window);
                 return None;
             }
         }
 
         let local_x = self.cursor_x - window.x;
-        let local_y = self.cursor_y - window.y;
+        let local_y = Self::local_content_y(&window, self.cursor_y);
         let laid_out = window.rows.iter().any(|row| row.width > 0 && row.height > 0);
 
         let (row, in_rows) = if laid_out {
@@ -1036,10 +1038,36 @@ impl Compositor {
 
         let content_clip = Self::content_clip(&window);
 
+        let max_scroll = Self::max_scroll(&window);
+        if max_scroll > 0 {
+            let track_top = content_clip.top + 6;
+            let track_height = (content_clip.bottom - content_clip.top - 12).max(24);
+            let viewport_height = (content_clip.bottom - content_clip.top).max(1);
+            let content_height = viewport_height.saturating_add(max_scroll);
+            let thumb_height = ((track_height as i64 * viewport_height as i64)
+                / content_height as i64) as i32;
+            let thumb_height = thumb_height.clamp(24, track_height);
+            let travel = (track_height - thumb_height).max(0);
+            let thumb_offset = if max_scroll == 0 {
+                0
+            } else {
+                ((travel as i64 * window.scroll_y as i64) / max_scroll as i64) as i32
+            };
+            let bar_x = window.x + window.width - 8;
+            self.rounded_rect_clipped(
+                bar_x, track_top + thumb_offset, 4, thumb_height,
+                0x00aeb6bc, 0x00aeb6bc, content_clip
+            );
+        }
+
         for (index, row) in window.rows.iter().enumerate() {
             let managed = row.width > 0 && row.height > 0;
             let x = window.x + if managed { row.x } else { 24 };
-            let y = window.y + if managed { row.y } else { 60 + index as i32 * 42 };
+            let y = window.y + if managed {
+                row.y - if Self::is_scrollable(&window) { window.scroll_y } else { 0 }
+            } else {
+                60 + index as i32 * 42
+            };
             let width = if managed { row.width } else { window.width - 48 };
             let height = if managed { row.height } else { 34 };
 
