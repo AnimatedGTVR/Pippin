@@ -194,10 +194,37 @@ constexpr ui::Node kDesktopSectionNodes[] = {
 constexpr ui::Node kDesktopSection =
     ui::fixed(ui::group(ui::Axis::VERTICAL, kDesktopSectionNodes, 8), 72);
 
+constexpr ui::Node kInputSectionNodes[] = {
+    ui::leaf(ui::heading("Input", 26)),
+    ui::leaf(ui::label("Keyboard + mouse")),
+};
+
+constexpr ui::Node kInputSection =
+    ui::fixed(ui::group(ui::Axis::VERTICAL, kInputSectionNodes, 8), 72);
+
+constexpr ui::Node kSystemSectionNodes[] = {
+    ui::leaf(ui::heading("System", 26)),
+    ui::leaf(ui::label("Native ELF apps")),
+};
+
+constexpr ui::Node kSystemSection =
+    ui::fixed(ui::group(ui::Axis::VERTICAL, kSystemSectionNodes, 8), 72);
+
+constexpr ui::Node kAboutSectionNodes[] = {
+    ui::leaf(ui::heading("About", 26)),
+    ui::leaf(ui::label("Pippin 0.1.0")),
+};
+
+constexpr ui::Node kAboutSection =
+    ui::fixed(ui::group(ui::Axis::VERTICAL, kAboutSectionNodes, 8), 72);
+
 constexpr ui::Node kSettingsColumnNodes[] = {
     ui::leaf(ui::heading("Settings")),
     kAppearanceSection,
     kDesktopSection,
+    kInputSection,
+    kSystemSection,
+    kAboutSection,
 };
 
 constexpr ui::Node kSettingsColumn =
@@ -206,18 +233,21 @@ constexpr ui::Node kSettingsColumn =
 constexpr ui::Node kSettingsTree =
     ui::proxy(kSettingsColumn, ui::Insets{20, 24, 20, 24});
 
-constexpr auto kSettingsControls = ui::layoutTree<5>(
+constexpr auto kSettingsControls = ui::layoutTree<11>(
     kSettingsTree,
     ui::Rect{0, 44, 520, 386}
 );
 
 static_assert(kSettingsControls.valid());
-static_assert(kSettingsControls.size() == 5);
+static_assert(kSettingsControls.size() == 11);
 static_assert(kSettingsControls[0].frame.y == 64);
 static_assert(kSettingsControls[1].frame.y == 108);
 static_assert(kSettingsControls[2].frame.y == 142);
 static_assert(kSettingsControls[3].frame.y == 194);
 static_assert(kSettingsControls[4].frame.y == 228);
+static_assert(kSettingsControls[6].frame.y == 314);
+static_assert(kSettingsControls[8].frame.y == 400);
+static_assert(kSettingsControls[10].frame.y == 486);
 static_assert(kSettingsControls[2].frame.width == 472);
 
 constexpr pippin_shell_item kSettingsItems[] = {
@@ -226,6 +256,12 @@ constexpr pippin_shell_item kSettingsItems[] = {
     shellItem(kSettingsControls[2]),
     shellItem(kSettingsControls[3]),
     shellItem(kSettingsControls[4]),
+    shellItem(kSettingsControls[5]),
+    shellItem(kSettingsControls[6]),
+    shellItem(kSettingsControls[7]),
+    shellItem(kSettingsControls[8]),
+    shellItem(kSettingsControls[9]),
+    shellItem(kSettingsControls[10]),
 };
 
 constexpr ui::ControlSpec kTerminalSpecs[] = {
