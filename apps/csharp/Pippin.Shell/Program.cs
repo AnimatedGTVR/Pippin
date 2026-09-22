@@ -13,23 +13,23 @@ public sealed class Wallpaper : Application
     public override string Id => "org.pippin.wallpaper";
     public override IEnumerable<Surface> CreateSurfaces() =>
         [new("wallpaper", SurfaceRole.Wallpaper, "Wallpaper", 0, 0, 800, 600,
-            Background: "#142b42")];
+            Background: "#263746")];
 }
 
 public sealed class Panel : Application
 {
     public override string Id => "org.pippin.panel";
     public override IEnumerable<Surface> CreateSurfaces() =>
-        [new("panel", SurfaceRole.Panel, "Panel", 0, 0, 800, 36,
+        [new("panel", SurfaceRole.Panel, "Panel", 10, 10, 780, 40,
             UiNode.Row(UiNode.Button("Pippin", "launcher.open"),
-                UiNode.Label("Desktop"), UiNode.Button("Settings", "settings.open")))];
+                UiNode.Label("Pippin Desktop"), UiNode.Button("Settings", "settings.open")))];
 }
 
 public sealed class Dock : Application
 {
     public override string Id => "org.pippin.dock";
     public override IEnumerable<Surface> CreateSurfaces() =>
-        [new("dock", SurfaceRole.Dock, "Dock", 184, 540, 432, 52,
+        [new("dock", SurfaceRole.Dock, "Dock", 202, 536, 396, 54,
             UiNode.Row(UiNode.Button("Files", "files.open"),
                 UiNode.Button("Settings", "settings.open"),
                 UiNode.Button("Launcher", "launcher.open")))];
@@ -39,7 +39,7 @@ public sealed class Launcher : Application
 {
     public override string Id => "org.pippin.launcher";
     public override IEnumerable<Surface> CreateSurfaces() =>
-        [new("launcher", SurfaceRole.Launcher, "Launcher", 28, 48, 310, 380,
+        [new("launcher", SurfaceRole.Launcher, "Applications", 24, 62, 324, 390,
             UiNode.Column(UiNode.Label("Applications"),
                 UiNode.Button("Files", "files.open"),
                 UiNode.Button("Settings", "settings.open")))];
@@ -156,7 +156,7 @@ internal sealed class HostBridge(string socketPath, Application[] clients)
             case "wallpaper.select.gradient":
                 alternateWallpaper = !alternateWallpaper;
                 await SendAsync("S|wallpaper|B|0|0|800|600|" +
-                    (alternateWallpaper ? "#394056" : "#142b42") + "|");
+                    (alternateWallpaper ? "#4b4f63" : "#263746") + "|");
                 break;
         }
     }
