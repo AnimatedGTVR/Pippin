@@ -1285,12 +1285,60 @@ impl Compositor {
                     self.fill_rect_clipped(x, y + height - 2, width, 1,
                                            0x00d5d9dc, content_clip);
                 }
-                b's' => {
+                b's' | b'e' => {
                     self.rounded_rect_clipped(x, y, width, height, surface, border, content_clip);
-                    self.text_clipped(x + 14, y + ((height - 14) / 2).max(0),
-                                      &row.text, 2,
-                                      if disabled { 0x0090999f } else { 0x00777f85 },
-                                      content_clip);
+
+                    let (value, cursor) = self.edit_snapshot(&window.id, index);
+                    let text_x = x + 14;
+                    let text_y = y + ((height - 14) / 2).max(0);
+                    let max_chars = (((width - 32).max(12)) / 12) as usize;
+
+                    if value.is_empty() {
+                        self.text_clipped(
+                            text_x,
+                            text_y,
+                            &row.text,
+                            2,
+                            if disabled { 0x0090999f } else { 0x00777f85 },
+                            content_clip,
+                        );
+                    } else {
+                        // Edited text is ASCII-only for now, so byte slicing is
+                        // also character slicing. Keep the caret in the visible
+                        // horizontal window for longer values.
+                        let start = Self::edit_visible_start(
+                            value.len(),
+                            cursor,
+                            max_chars.max(1),
+                        );
+                        let end = (start + max_chars).min(value.len());
+                        self.text_clipped(
+                            text_x,
+                            text_y,
+                            &value[start..end],
+                            2,
+                            if disabled { 0x0090999f } else { ink },
+                            content_clip,
+                        );
+                    }
+
+                    if control_focused && !disabled {
+                        let start = Self::edit_visible_start(
+                            value.len(),
+                            cursor,
+                            max_chars.max(1),
+                        );
+                        let caret_column = cursor.saturating_sub(start).min(max_chars);
+                        let caret_x = text_x + caret_column as i32 * 12;
+                        self.fill_rect_clipped(
+                            caret_x,
+                            y + 8,
+                            2,
+                            (height - 16).max(10),
+                            CHROME_ACCENT,
+                            content_clip,
+                        );
+                    }
                 }
                 b't' => {
                     if !row.action.is_empty() {
