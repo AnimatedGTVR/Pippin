@@ -34,8 +34,8 @@ window tests z-order, focus and dragging. It is not a C# window.
 a socket-backed second serial port. Pippin automatically enters graphics
 mode when the shell connects. The panel, dock and notification appear first.
 Click **Pippin** to open the launcher, **Files** to open its window, or
-**Settings** to change the wallpaper palette. Window title bars drag, and
-their square boxes close them. The C# process owns surface descriptions and
+**Settings** to change the wallpaper palette. Window title bars drag, minimize to the dock, maximize/restore, and close. The
+shell bridge also preserves window geometry/state when refreshing content. The C# process owns surface descriptions and
 button actions; the Rust compositor owns pixels, window position and input.
 
 Run `dotnet run --project apps/csharp/Pippin.Shell/Pippin.Shell.csproj` without
@@ -48,16 +48,15 @@ loader and guest IPC.
 
 COM1 remains the boot log and CLI. COM2 carries newline-terminated ASCII
 messages to the C# host process. `H|1` / `R|1` is the version handshake.
-`S|id|role|x|y|width|height|title|text@action;...` creates or replaces a
-surface; `X|id` removes one. Pippin acknowledges each command with `A`.
+`S|id|role|x|y|width|height|title|kind:text@action;...` creates or refreshes a
+surface; `R|id` restores a minimized surface and `X|id` removes one. Pippin acknowledges each command with `A`.
 Button presses return `E|action`. The protocol is bounded to 384 bytes per
-line and 16 simultaneous surfaces; it currently supports simple labels and
-buttons. Background (`B`), panel (`P`), dock (`D`), launcher (`L`),
+line and 16 simultaneous surfaces; it supports labels, headings, buttons, toggles and search-field presentation. Background (`B`), panel (`P`), dock (`D`), launcher (`L`),
 notification (`N`) and app window (`W`) roles are defined.
 
 ## Next implementation steps
 
-1. Add richer widget rendering, keyboard events, resizing and damage tracking.
+1. Add keyboard-driven shell controls, richer text input, and damage tracking.
 2. Add a guest managed runtime and loader so C# clients can connect through
    guest IPC rather than the host serial bridge.
 3. Let C# submit wallpaper pixels and app content, while keeping a Rust boot
