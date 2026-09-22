@@ -41,6 +41,11 @@ constexpr auto kDockControls = ui::flow(
     kDockSpecs
 );
 
+static_assert(static_cast<uint8_t>(ui::ControlStyle::TILE) == PIPPIN_CONTROL_STYLE_TILE);
+static_assert(kDockControls[0].frame.x == 12 && kDockControls[0].frame.width == 104);
+static_assert(kDockControls[1].frame.x == 132 && kDockControls[1].frame.width == 104);
+static_assert(kDockControls[2].frame.x == 252 && kDockControls[2].frame.width == 104);
+
 constexpr pippin_shell_item kDockItems[] = {
     shellItem(kDockControls[0]),
     shellItem(kDockControls[1]),
