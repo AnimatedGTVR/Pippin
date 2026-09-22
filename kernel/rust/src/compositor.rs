@@ -61,6 +61,31 @@ impl Compositor {
             cursor_x: (WIDTH / 2) as i32, cursor_y: (HEIGHT / 2) as i32,
             left_down: false, drag: None,
         };
+
+        // The dock is part of the desktop itself, not something that should
+        // disappear just because the host C# shell/COM2 bridge failed to
+        // connect. Keep a small native fallback here. If the C# shell later
+        // sends S|dock|..., command() finds this same ID and replaces the rows
+        // with the managed shell version without creating a duplicate dock.
+        compositor.windows.push(Window {
+            id: "dock".to_string(),
+            role: b'D',
+            x: 330,
+            y: 696,
+            width: 364,
+            height: 58,
+            title: "Dock".to_string(),
+            rows: vec![
+                Row { text: "Apps".to_string(), action: "launcher.restore".to_string(), kind: b'b' },
+                Row { text: "Files".to_string(), action: "files.restore".to_string(), kind: b'b' },
+                Row { text: "Settings".to_string(), action: "settings.restore".to_string(), kind: b'b' },
+            ],
+            native: false,
+            maximized: false,
+            minimized: false,
+            restore: None,
+        });
+
         compositor.render();
         compositor
     }
