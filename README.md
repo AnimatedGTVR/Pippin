@@ -1,6 +1,6 @@
 # Pippin
 
-A retro-styled, Macintosh-inspired desktop operating system. Single-user, GUI-first,
+A small native desktop operating system with a custom shell and GUI-first direction. Single-user today,
 built with a mix of **Assembly**, **Rust**, **C++** and **C** in the kernel, **C++**
 drivers, a **Rust** compositor and **C++** desktop shell, with a small **C** ABI layer, and
 **shell scripts** for build and boot glue.
@@ -34,7 +34,8 @@ to run it. `make iso` also needs Limine and `xorriso`.
 
 ```sh
 make specs          # inspect host specs and calculate safe Pippin limits
-make                # preflight + configure + build build/kernel.elf
+make                # preflight + build kernel + embedded native app
+make apps           # build build/apps/native/pippin-hello.elf
 make run            # boot full desktop using QEMU's normal frontend
 make run-shell      # alias for make run
 make run-ui         # alias for the native desktop run path
@@ -65,14 +66,14 @@ Because Pippin currently uses a relative PS/2 mouse, QEMU may still grab pointer
 input while interacting with the guest; a truly grab-free absolute pointer will
 require a USB/virtio tablet input driver in Pippin.
 
-See [docs/build.md](docs/build.md) for the full toolchain and ISO setup.
+See [docs/build.md](docs/build.md) for the full toolchain and ISO setup, and [docs/apps.md](docs/apps.md) for the native ELF app format.
 
 After `make run`, Pippin enters the graphical desktop directly from the guest.
 The shell model is compiled into the kernel-side C++ runtime and exported through
 a small C ABI to the Rust compositor. No host .NET process is required.
 `make run-shell` and `make run-ui` are aliases for this same native desktop
 boot path. Use `make run-headless` for the kernel/serial-only workflow and
-`make run-disk` to make `hello.pipb` available to `ls` and `cat`.
+`make run-disk` to make `hello.pipb` available to `ls` and `cat`. The serial CLI also exposes `apps` and `run hello` for the native ELF loader.
 
 ## Design in one paragraph
 
@@ -95,6 +96,6 @@ connect build, image, and emulator steps on the development host.
 - **M4 — GUI:** Rust compositor/window manager with a native C++ desktop shell.
 - **M4.5 — Native shell ABI:** C++ shell surfaces exported through a small C ABI to Rust.
 - **Window API foundation:** separate clients, owned surfaces and input events.
-- **M5 — Apps:** C++ and Rust applications using the Toolbox API.
-- **M6 — Runtime expansion:** native executable loading, packaging, and services on x86-64.
+- **M5 — Apps:** ELF64 native loader + freestanding C++ apps, expanding toward the Toolbox API.
+- **M6 — Runtime expansion:** per-process address spaces, packaging, and services on x86-64.
 - **M7 — 68k:** Motorola 68000 feasibility port.
