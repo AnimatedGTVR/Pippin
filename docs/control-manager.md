@@ -222,6 +222,43 @@ Keyboard behavior:
 The Dock, Panel, Launcher, Files, Settings, and Terminal all use this
 interaction model once visible.
 
+## Focus scopes and click semantics
+
+Keyboard traversal is now scoped instead of global.
+
+The compositor tracks either:
+
+- the **Desktop** scope, which contains Panel and Dock controls, or
+- one **Window** scope identified by the active native window ID.
+
+Opening or clicking Launcher, Files, Settings, or Terminal selects that window
+scope. `Tab` and `Shift+Tab` wrap only through focusable controls in that
+scope. Clicking Panel/Dock returns traversal to the Desktop scope. If a scoped
+window is minimized or removed, the compositor repairs focus to the next
+topmost native window or back to Desktop.
+
+Focused controls are validated again before Enter/Space activation, so stale
+focus cannot fire an action after a surface has changed.
+
+Pointer activation also now follows normal desktop button semantics:
+
+1. mouse-down records the pressed control and gives it focus
+2. the pressed visual remains while the button is held
+3. the action fires only when the button is released over that same control
+4. dragging outside before release cancels activation
+
+Window chrome actions remain press-driven.
+
+## Node-tree safety fixes
+
+The retained tree now reports capacity overflow instead of silently dropping
+extra leaves. `TreeLayout::valid()` can be used in `static_assert` checks;
+the Launcher does this for its five-leaf tree.
+
+`Proxy` stores a pointer to its child, so the rvalue overload is explicitly
+deleted. This prevents accidentally wrapping a temporary Node and leaving a
+dangling child pointer.
+
 ## Why this boundary
 
 For now:
@@ -239,8 +276,8 @@ The Control Manager should stay focused:
 
 1. migrate Settings and Files to nested groups where section structure benefits
    from it
-2. add focus scopes for individual windows/dialogs
-3. add richer pointer semantics such as activate-on-release and drag cancellation
-4. add scrolling/content clipping for longer layouts
+2. add scrolling/content clipping for longer layouts
+3. add per-control editable/search state instead of static text placeholders
+4. add runtime relayout so maximized/resized windows can recompute their trees
 5. once user apps can own surfaces directly, move this same C++ manager into the
    native app/toolkit layer
