@@ -22,6 +22,9 @@ const CHROME_CLOSE: u32 = 0x00d95d55;
 const CHROME_SHADOW: u32 = 0x00151b22;
 const SHELL_DARK: u32 = 0x0014191f;
 const SHELL_SURFACE: u32 = 0x00222931;
+const SHELL_SURFACE_HOVER: u32 = 0x002d3540;
+const SHELL_SURFACE_PRESSED: u32 = 0x00384452;
+const SHELL_DISABLED: u32 = 0x0020272e;
 const SHELL_BORDER: u32 = 0x00414b57;
 const SHELL_TEXT: u32 = 0x00f3f5f7;
 const SHELL_MUTED: u32 = 0x00aeb8c2;
@@ -29,6 +32,8 @@ const CONTROL_STYLE_SUBTLE: u8 = 1;
 const CONTROL_STYLE_ACCENT: u8 = 3;
 const CONTROL_STYLE_SEARCH: u8 = 4;
 const CONTROL_STYLE_STATUS: u8 = 5;
+const CONTROL_FLAG_FOCUSABLE: u8 = 1 << 0;
+const CONTROL_FLAG_DISABLED: u8 = 1 << 1;
 const HEADER_HEIGHT: i32 = 44;
 
 #[derive(Clone)]
@@ -37,6 +42,7 @@ struct Row {
     action: String,
     kind: u8,
     style: u8,
+    flags: u8,
     x: i32,
     y: i32,
     width: i32,
@@ -68,6 +74,9 @@ pub struct Compositor {
     cursor_x: i32,
     cursor_y: i32,
     left_down: bool,
+    hovered_control: Option<(String, usize)>,
+    pressed_control: Option<(String, usize)>,
+    focused_control: Option<(String, usize)>,
     drag: Option<(String, i32, i32)>, // window ID and pointer offset
 }
 
@@ -78,12 +87,16 @@ impl Compositor {
             windows: Vec::new(), next_id: 1,
             wallpaper_base: 0x002f80ed,
             cursor_x: (WIDTH / 2) as i32, cursor_y: (HEIGHT / 2) as i32,
-            left_down: false, drag: None,
+            left_down: false,
+            hovered_control: None,
+            pressed_control: None,
+            focused_control: None,
+            drag: None,
         };
 
         // The visible shell model now comes from C++ through the tiny C ABI.
         // Rust remains responsible for validation, ownership and rendering.
-        if ffi::shell_abi_version() == 2 {
+        if ffi::shell_abi_version() == 3 {
             for index in 0..ffi::shell_surface_count().min(MAX_WINDOWS) {
                 let Some(surface) = ffi::shell_surface(index) else { continue; };
                 if !matches!(surface.role, b'P' | b'D' | b'L' | b'N' | b'W') {
@@ -102,6 +115,7 @@ impl Compositor {
                         action: item.action.to_string(),
                         kind: item.kind,
                         style: item.style,
+                        flags: item.flags,
                         x: item.x,
                         y: item.y,
                         width: item.width,
@@ -140,11 +154,11 @@ impl Compositor {
             width: 440, height: 300, title: "WINDOW TEST".to_string(),
             rows: vec![Row {
                 text: "RUST COMPOSITOR".to_string(), action: String::new(), kind: b'l',
-                style: 0, x: 0, y: 0, width: 0, height: 0,
+                style: 0, flags: 0, x: 0, y: 0, width: 0, height: 0,
             },
             Row {
                 text: "DRAG TITLE BAR".to_string(), action: String::new(), kind: b'l',
-                style: 0, x: 0, y: 0, width: 0, height: 0,
+                style: 0, flags: 0, x: 0, y: 0, width: 0, height: 0,
             }],
             native: true, maximized: false, minimized: false, restore: None,
         });
@@ -215,7 +229,7 @@ impl Compositor {
                 (kind.as_bytes().first().copied().unwrap_or(b'l'), value)).unwrap_or((b'l', text));
             parsed_rows.push(Row {
                 text: text.to_string(), action: action.to_string(), kind,
-                style: 0, x: 0, y: 0, width: 0, height: 0,
+                style: 0, flags: 0, x: 0, y: 0, width: 0, height: 0,
             });
         }
 
@@ -247,8 +261,26 @@ impl Compositor {
         (true, events)
     }
 
-    pub fn key_scancode(&self, scan: u8, text: Option<u8>) -> Vec<Event> {
-        self.clients.key(scan, text)
+    pub fn key_scancode(&mut self, scan: u8, text: Option<u8>, reverse_focus: bool)
+        -> (Option<String>, Vec<Event>) {
+        if scan & 0x80 == 0 {
+            // Tab / Shift+Tab moves focus across native managed controls.
+            if scan == 0x0f {
+                self.focus_next(reverse_focus);
+                self.render();
+                return (None, Vec::new());
+            }
+
+            // Enter or Space activates the focused control.
+            if matches!(scan, 0x1c | 0x39) {
+                if let Some(action) = self.focused_action() {
+                    self.render();
+                    return (Some(action), Vec::new());
+                }
+            }
+        }
+
+        (None, self.clients.key(scan, text))
     }
 
     pub fn has_client_windows(&self) -> bool { self.clients.is_active() }
@@ -262,6 +294,19 @@ impl Compositor {
         self.cursor_y = (self.cursor_y - dy).clamp(0, HEIGHT as i32 - 1);
         let left = buttons & 1 != 0;
         let (handled, events) = self.clients.pointer(self.cursor_x, self.cursor_y, left, self.left_down);
+
+        self.hovered_control = if handled {
+            None
+        } else {
+            self.control_at(self.cursor_x, self.cursor_y)
+        };
+
+        if !handled && left && !self.left_down {
+            self.pressed_control = self.hovered_control.clone();
+        } else if !left && self.left_down {
+            self.pressed_control = None;
+        }
+
         let action = if !handled && left && !self.left_down { self.press() } else { None };
         if left && !handled {
             if let Some((ref id, offset_x, offset_y)) = self.drag {
@@ -276,6 +321,77 @@ impl Compositor {
         self.left_down = left;
         self.render();
         (action, events)
+    }
+
+    fn control_at(&self, x: i32, y: i32) -> Option<(String, usize)> {
+        for window in self.windows.iter().rev() {
+            if window.minimized { continue; }
+            let local_x = x - window.x;
+            let local_y = y - window.y;
+            for (index, row) in window.rows.iter().enumerate() {
+                if row.width <= 0 || row.height <= 0 { continue; }
+                if local_x >= row.x && local_x < row.x + row.width
+                    && local_y >= row.y && local_y < row.y + row.height {
+                    return Some((window.id.clone(), index));
+                }
+            }
+        }
+        None
+    }
+
+    fn focused_action(&self) -> Option<String> {
+        let (id, index) = self.focused_control.as_ref()?;
+        let window = self.windows.iter().find(|window| !window.minimized && &window.id == id)?;
+        let row = window.rows.get(*index)?;
+        if row.flags & CONTROL_FLAG_DISABLED != 0 || row.flags & CONTROL_FLAG_FOCUSABLE == 0
+            || row.action.is_empty() {
+            return None;
+        }
+        Some(row.action.clone())
+    }
+
+    fn focus_next(&mut self, reverse: bool) {
+        let mut controls: Vec<(String, usize)> = Vec::new();
+        for window in &self.windows {
+            if window.minimized { continue; }
+            for (index, row) in window.rows.iter().enumerate() {
+                if row.width > 0 && row.height > 0
+                    && row.flags & CONTROL_FLAG_FOCUSABLE != 0
+                    && row.flags & CONTROL_FLAG_DISABLED == 0
+                    && !row.action.is_empty() {
+                    controls.push((window.id.clone(), index));
+                }
+            }
+        }
+
+        if controls.is_empty() {
+            self.focused_control = None;
+            return;
+        }
+
+        let current = self.focused_control.as_ref()
+            .and_then(|focused| controls.iter().position(|candidate| candidate == focused));
+
+        let next = if reverse {
+            current.map(|index| if index == 0 { controls.len() - 1 } else { index - 1 })
+                .unwrap_or(controls.len() - 1)
+        } else {
+            current.map(|index| (index + 1) % controls.len()).unwrap_or(0)
+        };
+
+        self.focused_control = Some(controls[next].clone());
+    }
+
+    fn control_state(&self, window_id: &str, index: usize)
+        -> (bool, bool, bool) {
+        let matches = |state: &Option<(String, usize)>| {
+            state.as_ref().is_some_and(|(id, row)| id == window_id && *row == index)
+        };
+        (
+            matches(&self.hovered_control),
+            matches(&self.pressed_control),
+            matches(&self.focused_control),
+        )
     }
 
     fn press(&mut self) -> Option<String> {
@@ -366,7 +482,18 @@ impl Compositor {
             (((self.cursor_y - window.y - row_top) / 42) as usize,
              self.cursor_y >= window.y + row_top)
         };
-        let action = if in_rows { window.rows.get(row).map(|row| row.action.clone()) } else { None };
+        let action = if in_rows {
+            window.rows.get(row).and_then(|control| {
+                if control.flags & CONTROL_FLAG_DISABLED != 0 {
+                    None
+                } else {
+                    if control.flags & CONTROL_FLAG_FOCUSABLE != 0 {
+                        self.focused_control = Some((window.id.clone(), row));
+                    }
+                    Some(control.action.clone())
+                }
+            })
+        } else { None };
         if matches!(window.role, b'W' | b'L') && !window.maximized
             && self.cursor_y < window.y + HEADER_HEIGHT {
             self.drag = Some((window.id.clone(), self.cursor_x - window.x, self.cursor_y - window.y));
