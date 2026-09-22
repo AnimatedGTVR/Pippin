@@ -8,9 +8,9 @@
 #   - C++       (drivers/cpp)        driver layer
 # Each boot path is linked into a freestanding ELF by `ld`.
 #
-# The driver layer stays in this build until app-land exists; turn on
-# PIPPIN_BUILD_APPS at Milestone 5 to add native C++ and Rust applications.
-# The native desktop shell model is C++ and crosses into Rust through a small C ABI.
+# The native desktop shell model is C++ and crosses into Rust through a small
+# C ABI. Native freestanding apps are built as ELF64 images and fed through the
+# Rust ring-3 loader.
 
 cmake_minimum_required(VERSION 3.20)
 project(Pippin VERSION 0.1.0 LANGUAGES ASM C CXX)
@@ -20,8 +20,6 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE OFF)
-
-option(PIPPIN_BUILD_APPS "Build the future native application layer" OFF)
 
 # ---- Freestanding codegen rules shared by every kernel/driver source ----
 # -mcmodel=large: both kernel images link in the higher half,
