@@ -47,4 +47,4 @@ pippin_syscall_entry:
 pippin_syscall_user_rsp:
     .quad 0
 
-.section .note.GNU-stack,"",@progbits\n
+.section .note.GNU-stack,"",@progbits
