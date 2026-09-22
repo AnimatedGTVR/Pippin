@@ -47,6 +47,7 @@ deeper dive into one slice: [build](build.md), [boot](boot.md),
 | Drivers          | C++      | Concrete device drivers implementing the `pippin::drv::Driver` interface |
 | Desktop shell (later) | C++ and Rust | Native shell, desktop services, and Toolbox clients |
 | Applications (later) | C++ and Rust; optional C# | Native Toolbox apps first; optional managed C# apps use Toolbox bindings on x86-64 |
+| Build and boot tooling | Shell | Host-side scripts connect build, image creation, and QEMU commands |
 
 Future note — **68k**: the planned Motorola 68k port keeps Assembly + Rust + C++
 (kernel) and C++ (drivers), with a C++ and Rust desktop. Optional C# app support
@@ -162,6 +163,9 @@ The four languages share one ELF and a few simple rules:
    target (see [build.md](build.md)).
 4. **One linker script** (`kernel/linker.ld`) owns section order, the BSS
    region, `__init_array` handling and the Multiboot address fields.
+5. **Host-side shell glue** (`scripts/`) runs image and emulator commands around
+   the build. CMake and the linker still own compilation and the final ELF link;
+   shell scripts are not part of the kernel image.
 
 ## 11. Directory map
 

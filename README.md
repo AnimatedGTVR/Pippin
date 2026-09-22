@@ -2,7 +2,8 @@
 
 A retro-styled, Macintosh-inspired desktop operating system. Single-user, GUI-first,
 built with a mix of **Assembly**, **Rust**, **C++** and **C** in the kernel, **C++**
-drivers, a **C++ and Rust** desktop, and optional **C#** applications later.
+drivers, a **C++ and Rust** desktop, optional **C#** applications later, and
+**shell scripts** for build and boot glue.
 
 > Pippin is currently at **Milestone 0**: a wired project skeleton that builds a
 > kernel ELF which boots under QEMU and talks over the serial console. See
@@ -20,7 +21,7 @@ drivers, a **C++ and Rust** desktop, and optional **C#** applications later.
 | `drivers/cpp/`                   | C++ driver layer (PCI stub today)                    |
 | `boot/`                          | Bootloader config (Limine, for the later migration)  |
 | `apps/`                          | Future application layer (C++ and Rust; optional C#) |
-| `scripts/`                       | QEMU / ISO helper scripts                            |
+| `scripts/`                       | Shell glue for QEMU / ISO workflows                  |
 
 ## Build
 
@@ -46,7 +47,8 @@ Resource) wrapped around a small preemptive kernel core. Assembly owns boot and 
 trampolines, Rust owns the safety-critical core (memory, interrupts, scheduling, IPC),
 C++ owns subsystems and drivers, C provides ABI-shim glue, and the future desktop
 shell uses C++ and Rust. Optional C# apps can use the same Toolbox API. The full
-picture lives in [docs/architecture.md](docs/architecture.md).
+picture lives in [docs/architecture.md](docs/architecture.md). Shell scripts
+connect build, image, and emulator steps on the development host.
 
 ## Roadmap
 

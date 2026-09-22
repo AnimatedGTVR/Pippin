@@ -2,7 +2,8 @@
 
 One build, one artifact: `build/kernel.elf` — a Multiboot kernel ELF mixing
 Assembly, Rust, C++, C and driver C++ sources. Everything is driven by CMake
-with a convenience `Makefile` on top.
+with a convenience `Makefile` on top. Shell scripts connect the image and QEMU
+steps on the development host.
 
 ## Toolchain
 
@@ -15,6 +16,7 @@ This mandatory set, in the form installed on the current machine:
 | `rustc`/`cargo` | 1.95 (stable)        | Rust kernel core (`no_std`)     |
 | GNU `as`/`ld`   | binutils 2.42        | in-built assembler, final link  |
 | `make`          | 4.3                  | top-level targets               |
+| `bash`          | host shell           | QEMU and ISO helper scripts     |
 | `qemu-system-x86_64` | 8.2 (optional)  | boot the OS without real HW     |
 
 `gcc` is used both as the C/C++ compiler and as the assembler driver
@@ -57,6 +59,9 @@ qemu-system-x86_64 -machine q35 -m 256M -display none -serial stdio \
    - all archives wrapped in `-Wl,--start-group/--end-group` because they
      reference each other in both directions (Rust ↔ C++ ↔ drivers),
    - `--gc-sections` (paired with `-ffunction-sections`) to drop dead code.
+5. **Shell glue** (`scripts/run-qemu.sh`, `scripts/make-iso.sh`) — runs QEMU and
+   image creation after the ELF is built. These scripts run on the host and do
+   not add shell code to the kernel or application runtime.
 
 ### Rust: why the host target?
 
