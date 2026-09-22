@@ -88,8 +88,14 @@ impl Shell {
     pub fn poll_bridge(&mut self) {
         let desktop = &mut self.desktop;
         let mut opened = false;
+        let mut terminal_capture = self.terminal_capture;
         let mut events: Vec<Event> = Vec::new();
         self.bridge.poll(|line| {
+            // Keep keyboard capture tied to the actual Terminal surface, not
+            // only to the Alt+T shortcut that happened to open it.
+            if line.starts_with("S|terminal|") { terminal_capture = true; }
+            if line == "X|terminal" { terminal_capture = false; }
+
             if (line.starts_with("S|") || line.starts_with("WC|")) && desktop.is_none() {
                 *desktop = desktop::Desktop::open();
                 opened = desktop.is_some();
@@ -100,6 +106,7 @@ impl Shell {
                 accepted
             } else { false }
         });
+        self.terminal_capture = terminal_capture;
         if opened { self.terminal.set_screen_enabled(false); }
         for event in events { self.bridge.event(event); }
     }
