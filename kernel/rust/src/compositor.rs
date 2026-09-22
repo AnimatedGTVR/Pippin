@@ -26,6 +26,7 @@ const SHELL_SURFACE_HOVER: u32 = 0x002d3540;
 const SHELL_BORDER: u32 = 0x00414b57;
 const SHELL_TEXT: u32 = 0x00f3f5f7;
 const SHELL_MUTED: u32 = 0x00aeb8c2;
+const CONTROL_STYLE_ACCENT: u8 = 3;
 const HEADER_HEIGHT: i32 = 44;
 
 #[derive(Clone)]
@@ -436,7 +437,7 @@ impl Compositor {
                 // style=2 is the Control Manager's TILE style. Unknown styles
                 // deliberately fall back to the same restrained shell surface.
                 let tile_fill = match row.style {
-                    3 => CHROME_ACCENT,
+                    CONTROL_STYLE_ACCENT => CHROME_ACCENT,
                     _ => SHELL_SURFACE,
                 };
                 self.rounded_rect(tile_x, tile_y, tile_w, tile_h, tile_fill, SHELL_BORDER);
