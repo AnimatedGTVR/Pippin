@@ -3,7 +3,7 @@
 Each milestone leaves the system running in QEMU. "Done" means the checkboxes
 in `make run` output and hold steady.
 
-## M0 — Skeleton (current) ✅
+## M0 — Skeleton (complete) ✅
 
 - [x] Multi-language build: Assembly + Rust + C++ + C + driver C++ in one ELF
 - [x] Multiboot header with explicit addresses; boots under QEMU (`-kernel`)
@@ -15,13 +15,15 @@ in `make run` output and hold steady.
 - [x] C glue provides `memset`/`memcpy`/`memmove`/`memcmp`/`strlen`
 - [x] 68k: long-range plan only (no code)
 
-## M1 — Core
+## M1 — Core (in progress)
 
-- [ ] Higher-half remap (`0xFFFF800000000000+`), real 4 KiB page tables
-- [ ] Physical frame allocator (bitmap over the bootloader memory map)
-- [ ] Zone heap: `#[global_allocator]` backing `Box`/`Vec` in the Rust core
-- [ ] GDT/TSS + full IDT; Rust interrupt dispatcher; serial keeps working
-- [ ] PIT/APIC timer + basic `sleep`/ticks
+- [x] Higher-half remap (`0xFFFF800000000000+`), real 4 KiB page tables
+- [x] Physical frame allocator (bitmap over the bootloader memory map)
+- [x] Zone heap: `#[global_allocator]` backing `Box`/`Vec` in the Rust core
+- [x] Full IDT and Rust interrupt dispatcher; serial keeps working
+- [ ] GDT/TSS for later task and privilege transitions
+- [x] PIT timer and basic tick-based sleep
+- [ ] APIC timer support
 - [ ] Migrate boot protocol to Limine (`boot/limine.conf`,
       `scripts/make-iso.sh`); `make iso` produces a bootable image
 - [ ] Switch Rust to a freestanding target (`x86_64-unknown-none` via rustup,

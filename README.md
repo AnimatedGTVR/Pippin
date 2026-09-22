@@ -8,8 +8,8 @@ drivers, a **C++ and Rust** desktop, optional **C#** applications later, and
 These are the current choices, not a limit on Pippin's languages. Other
 languages can join when a subsystem or application benefits from them.
 
-> Pippin is currently at **Milestone 0**: a wired project skeleton that builds a
-> kernel ELF which boots under QEMU and talks over the serial console. See
+> **Milestone 0 is complete; Milestone 1 is in progress.** The kernel builds and
+> boots under QEMU, with memory management and timer interrupts underway. See
 > [docs/milestones.md](docs/milestones.md).
 
 ## What is here
@@ -55,7 +55,7 @@ connect build, image, and emulator steps on the development host.
 
 ## Roadmap
 
-- **M0 — Skeleton (now):** multi-language build wired end-to-end, boots in QEMU.
+- **M0 — Skeleton (complete):** multi-language build wired end-to-end, boots in QEMU.
 - **M1 — Core:** higher-half paging, interrupts/GDT/IDT, real frame + heap allocators.
 - **M2 — Processes:** scheduler, syscall ABI, IPC ports.
 - **M3 — Drivers:** ACPI/PCI, PS/2, VESA framebuffer, disk.
