@@ -135,9 +135,9 @@ impl Desktop {
             }
             (accepted, events)
         } else {
-            self.compositor.command(line);
-            self.compositor.present(self.framebuffer as *mut u32);
-            (true, Vec::new())
+            let accepted = self.compositor.command(line);
+            if accepted { self.compositor.present(self.framebuffer as *mut u32); }
+            (accepted, Vec::new())
         }
     }
 
