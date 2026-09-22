@@ -263,6 +263,11 @@ impl Compositor {
 
     pub fn key_scancode(&mut self, scan: u8, text: Option<u8>, reverse_focus: bool)
         -> (Option<String>, Vec<Event>) {
+        // App/client windows own keyboard traversal while they are active.
+        if self.clients.is_active() {
+            return (None, self.clients.key(scan, text));
+        }
+
         if scan & 0x80 == 0 {
             // Tab / Shift+Tab moves focus across native managed controls.
             if scan == 0x0f {
@@ -329,7 +334,11 @@ impl Compositor {
             let local_x = x - window.x;
             let local_y = y - window.y;
             for (index, row) in window.rows.iter().enumerate() {
-                if row.width <= 0 || row.height <= 0 { continue; }
+                if row.width <= 0 || row.height <= 0
+                    || row.action.is_empty()
+                    || row.flags & CONTROL_FLAG_DISABLED != 0 {
+                    continue;
+                }
                 if local_x >= row.x && local_x < row.x + row.width
                     && local_y >= row.y && local_y < row.y + row.height {
                     return Some((window.id.clone(), index));
@@ -440,7 +449,7 @@ impl Compositor {
             let local_x = self.cursor_x - window.x;
             let local_y = self.cursor_y - window.y;
 
-            // Control Manager v2 supplies real local bounds. Hit testing no
+            // Control Manager supplies real local bounds. Hit testing no
             // longer knows how many dock items exist or where they are placed.
             let laid_out = window.rows.iter().any(|row| row.width > 0 && row.height > 0);
             if laid_out {
