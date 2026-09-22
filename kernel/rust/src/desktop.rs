@@ -141,9 +141,9 @@ impl Desktop {
         }
     }
 
-    pub fn key_scancode(&mut self, scan: u8, text: Option<u8>, reverse_focus: bool)
-        -> (Option<String>, Vec<Event>) {
-        let output = self.compositor.key_scancode(scan, text, reverse_focus);
+    pub fn key_scancode(&mut self, scan: u8, text: Option<u8>, reverse_focus: bool,
+                        extended: bool) -> (Option<String>, Vec<Event>) {
+        let output = self.compositor.key_scancode(scan, text, reverse_focus, extended);
         self.compositor.present(self.framebuffer as *mut u32);
         output
     }

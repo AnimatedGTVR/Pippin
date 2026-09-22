@@ -131,15 +131,15 @@ impl Shell {
             // Set-1 Alt is 0x38/0xb8. An E0 prefix may precede right Alt, so do not
             // discard the following byte while the graphical desktop is active.
             if scan == 0xe0 { self.extended = true; return; }
-            if scan == 0x38 { self.alt = true; self.extended = false; return; }
-            if scan == 0xb8 { self.alt = false; self.extended = false; return; }
+            let was_extended = self.extended;
+            self.extended = false;
+            if scan == 0x38 { self.alt = true; return; }
+            if scan == 0xb8 { self.alt = false; return; }
             if self.alt && scan == 0x14 {
                 self.handle_desktop_action("terminal.open");
-                self.extended = false;
                 return;
             }
             if scan & 0x80 != 0 && (scan & 0x7f) == 0x14 { return; }
-            self.extended = false;
             if self.terminal_capture && scan & 0x80 == 0 {
                 if scan == 0x1c {
                     self.bridge.action("terminal.run");
@@ -180,7 +180,7 @@ impl Shell {
                 })
             } else { None };
             let desktop_output = if let Some(desktop) = &mut self.desktop {
-                Some(desktop.key_scancode(scan, text, self.shift))
+                Some(desktop.key_scancode(scan, text, self.shift, was_extended))
             } else {
                 None
             };
