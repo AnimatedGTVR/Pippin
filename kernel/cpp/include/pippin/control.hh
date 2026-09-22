@@ -16,9 +16,31 @@ struct Rect {
     }
 };
 
+struct Insets {
+    int32_t top{};
+    int32_t right{};
+    int32_t bottom{};
+    int32_t left{};
+
+    static constexpr Insets all(int32_t value) {
+        return {value, value, value, value};
+    }
+
+    static constexpr Insets symmetric(int32_t vertical, int32_t horizontal) {
+        return {vertical, horizontal, vertical, horizontal};
+    }
+};
+
 enum class Axis : uint8_t {
     HORIZONTAL,
     VERTICAL,
+};
+
+enum class Align : uint8_t {
+    START,
+    CENTER,
+    END,
+    FILL,
 };
 
 enum class ControlStyle : uint8_t {
@@ -37,6 +59,8 @@ struct ControlSpec {
     ControlStyle style;
     int32_t basis;
     uint8_t grow;
+    int32_t crossBasis;
+    Align crossAlign;
 };
 
 struct Control {
@@ -68,12 +92,43 @@ struct Flow {
     constexpr int32_t crossSize() const {
         return axis == Axis::HORIZONTAL ? frame.height : frame.width;
     }
+
+    constexpr int32_t crossStart() const {
+        return axis == Axis::HORIZONTAL ? frame.y : frame.x;
+    }
 };
+
+constexpr int32_t nonNegative(int32_t value) {
+    return value < 0 ? 0 : value;
+}
+
+constexpr Rect inset(Rect rect, Insets insets) {
+    return {
+        rect.x + insets.left,
+        rect.y + insets.top,
+        nonNegative(rect.width - insets.left - insets.right),
+        nonNegative(rect.height - insets.top - insets.bottom),
+    };
+}
+
+constexpr Flow inset(Flow layout, Insets insets) {
+    layout.frame = inset(layout.frame, insets);
+    return layout;
+}
 
 constexpr ControlSpec item(const char* text, const char* action, uint8_t kind,
                            ControlStyle style = ControlStyle::PLAIN,
-                           int32_t basis = 0, uint8_t grow = 1) {
-    return {text, action, kind, style, basis, grow};
+                           int32_t basis = 0, uint8_t growWeight = 1) {
+    return {
+        text,
+        action,
+        kind,
+        style,
+        basis,
+        growWeight,
+        0,
+        Align::FILL,
+    };
 }
 
 constexpr ControlSpec fixed(const char* text, const char* action, uint8_t kind,
@@ -81,13 +136,55 @@ constexpr ControlSpec fixed(const char* text, const char* action, uint8_t kind,
     return item(text, action, kind, style, basis, 0);
 }
 
-constexpr ControlSpec spacer(uint8_t grow = 1) {
-    return {"", "", 0, ControlStyle::PLAIN, 0, grow};
+// Karm's Grow node is represented here as a weighted ControlSpec. A grow
+// control may also have a minimum basis before remaining space is distributed.
+constexpr ControlSpec grow(const char* text, const char* action, uint8_t kind,
+                           ControlStyle style = ControlStyle::PLAIN,
+                           uint8_t weight = 1, int32_t basis = 0) {
+    return item(text, action, kind, style, basis, weight);
+}
+
+constexpr ControlSpec spacer(uint8_t growWeight = 1) {
+    return grow("", "", 0, ControlStyle::PLAIN, growWeight);
+}
+
+// Constrain a control on the flow's cross axis and align it inside the cell.
+// A zero cross size means fill, matching the original Control Manager behavior.
+constexpr ControlSpec cross(ControlSpec spec, int32_t size,
+                            Align align = Align::CENTER) {
+    spec.crossBasis = nonNegative(size);
+    spec.crossAlign = align;
+    return spec;
+}
+
+constexpr Rect alignCross(Flow const& layout, Rect cell,
+                          int32_t requested, Align align) {
+    if (requested <= 0 || align == Align::FILL)
+        return cell;
+
+    const int32_t available = layout.crossSize();
+    const int32_t size = requested < available ? requested : available;
+    int32_t start = layout.crossStart();
+
+    if (align == Align::CENTER)
+        start += (available - size) / 2;
+    else if (align == Align::END)
+        start += available - size;
+
+    if (layout.axis == Axis::HORIZONTAL) {
+        cell.y = start;
+        cell.height = size;
+    } else {
+        cell.x = start;
+        cell.width = size;
+    }
+    return cell;
 }
 
 // A deliberately small retained-layout primitive inspired by Karm Ui::flow.
 // Fixed children consume their basis first. Remaining main-axis space is
-// divided among grow children by weight. The cross axis fills the flow frame.
+// divided among grow children by weight. The cross axis fills by default, or
+// can be constrained/aligned with cross().
 template <size_t N>
 constexpr ControlSet<N> flow(Flow layout, const ControlSpec (&specs)[N]) {
     ControlSet<N> out{};
@@ -118,12 +215,19 @@ constexpr ControlSet<N> flow(Flow layout, const ControlSpec (&specs)[N]) {
             assignedGrow = target;
         }
 
-        Rect frame{};
+        Rect cell{};
         if (layout.axis == Axis::HORIZONTAL) {
-            frame = {cursor, layout.frame.y, main, layout.crossSize()};
+            cell = {cursor, layout.frame.y, main, layout.crossSize()};
         } else {
-            frame = {layout.frame.x, cursor, layout.crossSize(), main};
+            cell = {layout.frame.x, cursor, layout.crossSize(), main};
         }
+
+        const Rect frame = alignCross(
+            layout,
+            cell,
+            specs[i].crossBasis,
+            specs[i].crossAlign
+        );
 
         out.items[i] = {
             specs[i].text,
