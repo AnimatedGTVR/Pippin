@@ -142,7 +142,7 @@ impl WindowServer {
             let x = x.clamp(0, WIDTH as i32 - 40);
             let y = y.clamp(0, HEIGHT as i32 - TITLE_HEIGHT);
             self.windows.push(Window { id, title: title.to_string(), x, y, width, height,
-                visible: false, surface: vec![0x0019232d; (width * height) as usize],
+                visible: false, surface: vec![SURFACE; (width * height) as usize],
                 updating: false, cursor: 0 });
             events.push(Event::new(id, "WindowCreated", x, y));
             events.push(Event::new(id, "Redraw", width, height));
@@ -224,7 +224,7 @@ impl WindowServer {
         if window.width == width && window.height == height { return; }
         window.width = width;
         window.height = height;
-        window.surface = vec![0x0019232d; (width * height) as usize];
+        window.surface = vec![SURFACE; (width * height) as usize];
         events.push(Event::new(window.id, "Resize", width, height));
         events.push(Event::new(window.id, "Redraw", width, height));
     }
