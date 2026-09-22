@@ -12,6 +12,11 @@ pub struct ShellItemRaw {
     text: *const u8,
     action: *const u8,
     kind: u8,
+    style: u8,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
 }
 
 #[repr(C)]
@@ -32,6 +37,11 @@ pub struct ShellItem {
     pub text: &'static str,
     pub action: &'static str,
     pub kind: u8,
+    pub style: u8,
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
 }
 
 pub struct ShellSurface {
@@ -117,6 +127,11 @@ pub fn shell_item(raw: &ShellItemRaw) -> ShellItem {
         text: unsafe { cstr_to_str(raw.text) },
         action: unsafe { cstr_to_str(raw.action) },
         kind: raw.kind,
+        style: raw.style,
+        x: raw.x,
+        y: raw.y,
+        width: raw.width,
+        height: raw.height,
     }
 }
 
