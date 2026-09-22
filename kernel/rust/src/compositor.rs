@@ -82,7 +82,10 @@ impl Compositor {
     }
 
     /// A bounded host command: S|id|role|x|y|w|h|title|text@action;...
-    pub fn command(&mut self, line: &str) {
+    /// Returns false when the payload is rejected so the bridge can report a
+    /// protocol error instead of silently acknowledging a surface that was
+    /// never created.
+    pub fn command(&mut self, line: &str) -> bool {
         if let Some(id) = line.strip_prefix("R|") {
             if let Some(index) = self.windows.iter().position(|window| window.id == id) {
                 let mut window = self.windows.remove(index);
@@ -90,43 +93,51 @@ impl Compositor {
                 self.windows.push(window);
                 self.render();
             }
-            return;
+            return true;
         }
         if let Some(id) = line.strip_prefix("X|") {
             self.windows.retain(|window| window.id != id);
             if id == "wallpaper" { self.wallpaper_base = 0x002f80ed; }
             self.render();
-            return;
+            return true;
         }
-        let Some(payload) = line.strip_prefix("S|") else { return; };
+        let Some(payload) = line.strip_prefix("S|") else { return false; };
         let mut fields = payload.splitn(8, '|');
         let (Some(id), Some(role), Some(x), Some(y), Some(width), Some(height),
              Some(title), Some(rows)) = (fields.next(), fields.next(), fields.next(),
                 fields.next(), fields.next(), fields.next(), fields.next(), fields.next())
-            else { return; };
-        if id.is_empty() || id.len() > 32 || title.len() > 40 || rows.len() > 220 { return; }
+            else { return false; };
+
+        // Keep the whole command safely under the COM2 bridge's 384-byte line
+        // limit, but allow useful terminal/status text instead of the old
+        // 32-character row ceiling.
+        if id.is_empty() || id.len() > 32 || title.len() > 40 || rows.len() > 320 { return false; }
+
         if role == "B" {
-            if let Some(color) = title.strip_prefix('#').and_then(|hex| u32::from_str_radix(hex, 16).ok()) {
-                self.wallpaper_base = color & 0x00ffffff;
-                self.render();
-            }
-            return;
+            let Some(color) = title.strip_prefix('#')
+                .and_then(|hex| u32::from_str_radix(hex, 16).ok()) else { return false; };
+            self.wallpaper_base = color & 0x00ffffff;
+            self.render();
+            return true;
         }
-        let Some(role) = role.as_bytes().first().copied() else { return; };
-        if !matches!(role, b'P' | b'D' | b'L' | b'N' | b'W') { return; }
+
+        let Some(role) = role.as_bytes().first().copied() else { return false; };
+        if !matches!(role, b'P' | b'D' | b'L' | b'N' | b'W') { return false; }
         let (Ok(x), Ok(y), Ok(width), Ok(height)) =
             (x.parse::<i32>(), y.parse::<i32>(), width.parse::<i32>(), height.parse::<i32>())
-            else { return; };
-        if width < 40 || height < 30 || width > WIDTH as i32 || height > HEIGHT as i32 { return; }
+            else { return false; };
+        if width < 40 || height < 30 || width > WIDTH as i32 || height > HEIGHT as i32 { return false; }
+
         let mut parsed_rows = Vec::new();
         for part in rows.split(';').take(8) {
             if part.is_empty() { continue; }
             let (text, action) = part.split_once('@').unwrap_or((part, ""));
-            if text.len() > 32 || action.len() > 64 { return; }
+            if text.len() > 96 || action.len() > 64 { return false; }
             let (kind, text) = text.split_once(':').map(|(kind, value)|
                 (kind.as_bytes().first().copied().unwrap_or(b'l'), value)).unwrap_or((b'l', text));
             parsed_rows.push(Row { text: text.to_string(), action: action.to_string(), kind });
         }
+
         if let Some(index) = self.windows.iter().position(|window| window.id == id) {
             let mut window = self.windows.remove(index);
             window.role = role;
@@ -135,12 +146,13 @@ impl Compositor {
             window.minimized = false;
             self.windows.push(window);
         } else {
-            if self.windows.len() >= MAX_WINDOWS { return; }
+            if self.windows.len() >= MAX_WINDOWS { return false; }
             self.windows.push(Window { id: id.to_string(), role, x, y, width, height,
                                        title: title.to_string(), rows: parsed_rows, native: false,
                                        maximized: false, minimized: false, restore: None });
         }
         self.render();
+        true
     }
 
     pub fn client_command(&mut self, line: &str) -> (bool, Vec<Event>) {
