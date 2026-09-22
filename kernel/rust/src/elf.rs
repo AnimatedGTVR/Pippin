@@ -54,11 +54,11 @@ pub struct LoadReport {
 
 #[derive(Clone, Copy)]
 struct Segment {
+    flags: u32,
     offset: u64,
     vaddr: u64,
     filesz: u64,
     memsz: u64,
-    align: u64,
 }
 
 struct Mapping {
@@ -158,6 +158,7 @@ fn parse_segments(image: &[u8]) -> Result<(u64, Vec<Segment>), LoadError> {
         let at = phoff + index * phentsize;
         if le32(image, at).ok_or(LoadError::Truncated)? != PT_LOAD { continue; }
 
+        let flags = le32(image, at + 4).ok_or(LoadError::Truncated)?;
         let offset = le64(image, at + 8).ok_or(LoadError::Truncated)?;
         let vaddr = le64(image, at + 16).ok_or(LoadError::Truncated)?;
         let filesz = le64(image, at + 32).ok_or(LoadError::Truncated)?;
@@ -176,7 +177,7 @@ fn parse_segments(image: &[u8]) -> Result<(u64, Vec<Segment>), LoadError> {
             return Err(LoadError::BadSegment);
         }
 
-        segments.push(Segment { offset, vaddr, filesz, memsz, align });
+        segments.push(Segment { flags, offset, vaddr, filesz, memsz });
     }
 
     if segments.is_empty() { return Err(LoadError::NoLoadSegments); }
@@ -184,7 +185,9 @@ fn parse_segments(image: &[u8]) -> Result<(u64, Vec<Segment>), LoadError> {
         return Err(LoadError::BadEntry);
     }
     let entry_in_segment = segments.iter().any(|segment| {
-        entry >= segment.vaddr && entry < segment.vaddr.saturating_add(segment.memsz)
+        segment.flags & 1 != 0
+            && entry >= segment.vaddr
+            && entry < segment.vaddr.saturating_add(segment.memsz)
     });
     if !entry_in_segment { return Err(LoadError::BadEntry); }
 
