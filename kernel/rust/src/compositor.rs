@@ -457,12 +457,19 @@ impl Compositor {
     fn scroll_under_pointer(&mut self, delta: i32) -> bool {
         let Some(index) = self.windows.iter().rposition(|window| {
             !window.minimized
-                && Self::is_scrollable(window)
                 && self.cursor_x >= window.x
                 && self.cursor_x < window.x + window.width
                 && self.cursor_y >= window.y
                 && self.cursor_y < window.y + window.height
         }) else { return false; };
+
+        // The topmost surface owns the wheel, even when it cannot scroll.
+        // This prevents Dock/Panel/foreground-window fall-through.
+        if !Self::is_scrollable(&self.windows[index])
+            || !Self::content_clip(&self.windows[index])
+                .contains(self.cursor_x, self.cursor_y) {
+            return false;
+        }
 
         Self::scroll_window(&mut self.windows[index], delta)
     }
