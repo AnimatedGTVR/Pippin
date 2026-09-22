@@ -40,9 +40,12 @@ public sealed class Launcher : Application
     public override string Id => "org.pippin.launcher";
     public override IEnumerable<Surface> CreateSurfaces() =>
         [new("launcher", SurfaceRole.Launcher, "Applications", 24, 62, 324, 390,
-            UiNode.Column(UiNode.Heading("Applications"), UiNode.Separator(),
-                UiNode.Button("Files", "files.open"),
-                UiNode.Button("Settings", "settings.open")))];
+            UiNode.Column(UiNode.Heading("Applications"),
+                UiNode.Search("Search apps", "launcher.search"), UiNode.Separator(),
+                UiNode.Card(UiNode.Button("Files", "files.open"),
+                    UiNode.Label("Browse your files")),
+                UiNode.Card(UiNode.Button("Settings", "settings.open"),
+                    UiNode.Label("Configure Pippin"))))];
 }
 
 public sealed class Settings : Application
@@ -50,9 +53,13 @@ public sealed class Settings : Application
     public override string Id => "org.pippin.settings";
     public override IEnumerable<Surface> CreateSurfaces() =>
         [new("settings", SurfaceRole.AppWindow, "Settings", 160, 96, 480, 360,
-            UiNode.Column(UiNode.Heading("Appearance"), UiNode.Separator(),
-                UiNode.Button("Change wallpaper", "wallpaper.select.gradient"),
-                UiNode.Toggle("Animations", "settings.animations.toggle")))];
+            UiNode.Column(UiNode.Heading("Settings"), UiNode.Separator(),
+                UiNode.Card(UiNode.Heading("Appearance"),
+                    UiNode.Button("Change wallpaper", "wallpaper.select.gradient"),
+                    UiNode.Toggle("Animations", "settings.animations.toggle")),
+                UiNode.Card(UiNode.Heading("Desktop"),
+                    UiNode.Toggle("Show dock", "settings.dock.toggle"),
+                    UiNode.Toggle("Notifications", "settings.notifications.toggle"))))];
 }
 
 public sealed class Files : Application
@@ -60,10 +67,12 @@ public sealed class Files : Application
     public override string Id => "org.pippin.files";
     public override IEnumerable<Surface> CreateSurfaces() =>
         [new("files", SurfaceRole.AppWindow, "Files", 112, 80, 540, 400,
-            UiNode.Column(UiNode.Heading("Home"), UiNode.Separator(),
-                UiNode.Button("Documents", "files.documents.open"),
-                UiNode.Button("Downloads", "files.downloads.open"),
-                UiNode.Label("Pippin Files")))];
+            UiNode.Column(UiNode.Heading("Home"),
+                UiNode.Search("Search files", "files.search"), UiNode.Separator(),
+                UiNode.Card(UiNode.Button("Documents", "files.documents.open"),
+                    UiNode.Label("Documents")),
+                UiNode.Card(UiNode.Button("Downloads", "files.downloads.open"),
+                    UiNode.Label("Downloads"))))];
 }
 
 public sealed class Notifications : Application
@@ -200,7 +209,7 @@ internal sealed class HostBridge(string socketPath, Application[] clients)
     private static IEnumerable<UiNode> Flatten(UiNode? node)
     {
         if (node is null) yield break;
-        if (node.Kind is "label" or "heading" or "button" or "toggle") yield return node;
+        if (node.Kind is "label" or "heading" or "button" or "toggle" or "search") yield return node;
         if (node.Children is not null)
             foreach (var child in node.Children)
                 foreach (var item in Flatten(child)) yield return item;
