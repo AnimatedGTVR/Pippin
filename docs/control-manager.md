@@ -310,6 +310,47 @@ the Launcher does this for its five-leaf tree.
 deleted. This prevents accidentally wrapping a temporary Node and leaving a
 dangling child pointer.
 
+## Native scrolling
+
+Native Launcher/AppWindow surfaces now have per-window vertical scroll state.
+Scrolling builds directly on the content clipping boundary rather than moving
+the window itself.
+
+The compositor derives a content extent from the laid-out control rectangles
+and clamps each window's `scroll_y` between zero and the maximum overflow.
+Rendering subtracts that offset from managed control positions while hit-testing
+adds it back, so drawing and pointer input stay in the same logical coordinate
+space.
+
+When content overflows, Pippin draws a compact scrollbar thumb at the right edge
+of the content viewport.
+
+### Input
+
+Pippin now supports:
+
+- mouse wheel scrolling when an IntelliMouse-compatible PS/2 device is detected
+- Up / Down for line scrolling
+- Page Up / Page Down for viewport-sized scrolling
+- Home / End for start/end
+- Tab / Shift+Tab automatically scrolling the newly focused control into view
+
+The PS/2 driver negotiates wheel mode using the standard 200/100/80 sample-rate
+sequence. Devices that do not support the fourth wheel byte remain in normal
+3-byte mouse mode; keyboard scrolling still works.
+
+Wheel input obeys topmost-surface occlusion, so scrolling over the Dock, Panel,
+or another foreground surface does not leak through to a window underneath.
+
+### Scrollable Settings test
+
+Settings now contains retained Appearance, Desktop, Input, System, and About
+sections. Its content intentionally extends beyond the default 520x430 window,
+giving the scrolling path a real built-in surface to exercise.
+
+The native shell import limit was raised from 8 to 16 controls so larger retained
+trees are not truncated at the C++/Rust boundary.
+
 ## Why this boundary
 
 For now:
@@ -325,7 +366,7 @@ the C++ shell moves fully into ring-3 ELF processes.
 
 The Control Manager should stay focused:
 
-1. add scroll offsets and input on top of the new content clipping boundary
+1. add draggable scrollbar thumbs and optional inertial/smooth scrolling
 2. add per-control editable/search state instead of static text placeholders
 3. add runtime relayout so maximized/resized windows can recompute their trees
 4. migrate Terminal to retained nodes and editable text input
