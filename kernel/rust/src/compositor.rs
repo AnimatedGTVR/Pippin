@@ -310,17 +310,44 @@ impl Compositor {
         (true, events)
     }
 
-    pub fn key_scancode(&mut self, scan: u8, text: Option<u8>, reverse_focus: bool)
-        -> (Option<String>, Vec<Event>) {
+    pub fn key_scancode(&mut self, scan: u8, text: Option<u8>, reverse_focus: bool,
+                        extended: bool) -> (Option<String>, Vec<Event>) {
         // App/client windows own keyboard traversal while they are active.
         if self.clients.is_active() {
             return (None, self.clients.key(scan, text));
         }
 
         if scan & 0x80 == 0 {
-            // Tab / Shift+Tab stays inside the active native focus scope.
+            // Extended navigation keys scroll only the active native window.
+            if extended {
+                let handled = match scan {
+                    0x48 => self.scroll_scope_by(-SCROLL_LINE), // Up
+                    0x50 => self.scroll_scope_by(SCROLL_LINE),  // Down
+                    0x49 => {
+                        let step = self.scope_page_step();
+                        self.scroll_scope_by(-step)
+                    }
+                    0x51 => {
+                        let step = self.scope_page_step();
+                        self.scroll_scope_by(step)
+                    }
+                    0x47 => self.scroll_scope_to(false), // Home
+                    0x4f => self.scroll_scope_to(true),  // End
+                    _ => false,
+                };
+                if handled {
+                    self.hovered_control = self.control_at(self.cursor_x, self.cursor_y);
+                    self.render();
+                    return (None, Vec::new());
+                }
+            }
+
+            // Tab / Shift+Tab stays inside the active native focus scope and
+            // scrolls the newly focused control into view.
             if scan == 0x0f {
                 self.focus_next(reverse_focus);
+                self.ensure_focused_visible();
+                self.hovered_control = self.control_at(self.cursor_x, self.cursor_y);
                 self.render();
                 return (None, Vec::new());
             }
@@ -340,15 +367,23 @@ impl Compositor {
 
     pub fn has_client_windows(&self) -> bool { self.clients.is_active() }
 
-    /// PS/2 packet: sign-extended relative movement and the primary button.
+    /// PS/2 packet: sign-extended movement, primary button, and optional
+    /// IntelliMouse wheel delta in the high byte.
     pub fn pointer_packet(&mut self, packet: u32) -> (Option<String>, Vec<Event>) {
         let buttons = packet as u8;
         let dx = ((packet >> 8) as u8 as i8) as i32;
         let dy = ((packet >> 16) as u8 as i8) as i32;
+        let wheel = ((packet >> 24) as u8 as i8) as i32;
         self.cursor_x = (self.cursor_x + dx).clamp(0, WIDTH as i32 - 1);
         self.cursor_y = (self.cursor_y - dy).clamp(0, HEIGHT as i32 - 1);
         let left = buttons & 1 != 0;
         let (handled, events) = self.clients.pointer(self.cursor_x, self.cursor_y, left, self.left_down);
+
+        if !handled && wheel != 0 {
+            // Positive PS/2 wheel movement is upward, so it decreases the
+            // content offset. A single detent moves one logical line.
+            self.scroll_under_pointer(-wheel.saturating_mul(SCROLL_LINE));
+        }
 
         self.hovered_control = if handled {
             None
@@ -429,6 +464,14 @@ impl Compositor {
         }) else { return false; };
 
         Self::scroll_window(&mut self.windows[index], delta)
+    }
+
+    fn scope_page_step(&self) -> i32 {
+        let FocusScope::Window(id) = &self.focus_scope else { return SCROLL_LINE * 4; };
+        self.windows.iter()
+            .find(|window| !window.minimized && &window.id == id)
+            .map(|window| (window.height - HEADER_HEIGHT - 48).max(SCROLL_LINE))
+            .unwrap_or(SCROLL_LINE * 4)
     }
 
     fn scroll_scope_by(&mut self, delta: i32) -> bool {
@@ -518,7 +561,7 @@ impl Compositor {
             }
 
             let local_x = x - window.x;
-            let local_y = y - window.y;
+            let local_y = Self::local_content_y(window, y);
             for (index, row) in window.rows.iter().enumerate() {
                 if row.width <= 0 || row.height <= 0
                     || row.action.is_empty()
