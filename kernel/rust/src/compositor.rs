@@ -68,6 +68,12 @@ struct Window {
     restore: Option<(i32, i32, i32, i32)>,
 }
 
+#[derive(Clone, PartialEq, Eq)]
+enum FocusScope {
+    Desktop,
+    Window(String),
+}
+
 pub struct Compositor {
     pixels: Vec<u32>,
     clients: WindowServer,
@@ -80,6 +86,7 @@ pub struct Compositor {
     hovered_control: Option<(String, usize)>,
     pressed_control: Option<(String, usize)>,
     focused_control: Option<(String, usize)>,
+    focus_scope: FocusScope,
     drag: Option<(String, i32, i32)>, // window ID and pointer offset
 }
 
@@ -94,6 +101,7 @@ impl Compositor {
             hovered_control: None,
             pressed_control: None,
             focused_control: None,
+            focus_scope: FocusScope::Desktop,
             drag: None,
         };
 
