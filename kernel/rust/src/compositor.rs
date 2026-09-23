@@ -797,7 +797,8 @@ impl Compositor {
             for (index, row) in window.rows.iter().enumerate() {
                 if row.width <= 0 || row.height <= 0
                     || row.action.is_empty()
-                    || row.flags & CONTROL_FLAG_DISABLED != 0 {
+                    || row.flags & CONTROL_FLAG_DISABLED != 0
+                    || !self.row_matches_search(window, index, row) {
                     continue;
                 }
                 if local_x >= row.x && local_x < row.x + row.width
@@ -896,7 +897,8 @@ impl Compositor {
                 if row.width > 0 && row.height > 0
                     && row.flags & CONTROL_FLAG_FOCUSABLE != 0
                     && row.flags & CONTROL_FLAG_DISABLED == 0
-                    && !row.action.is_empty() {
+                    && !row.action.is_empty()
+                    && self.row_matches_search(window, index, row) {
                     controls.push((window.id.clone(), index));
                 }
             }
