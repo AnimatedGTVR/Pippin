@@ -337,6 +337,8 @@ impl Compositor {
             // scrolling. This makes Space text, Home/End caret movement, etc.
             let (edited, action) = self.handle_edit_key(scan, text, extended);
             if edited {
+                self.repair_focus_scope();
+                self.hovered_control = self.control_at(self.cursor_x, self.cursor_y);
                 self.render();
                 return (action, Vec::new());
             }
@@ -471,7 +473,7 @@ impl Compositor {
             .map(|index| self.edits[index].value.as_str())
     }
 
-    fn row_matches_search(&self, window: &Window, index: usize, row: &Row) -> bool {
+    fn row_matches_search(&self, window: &Window, _index: usize, row: &Row) -> bool {
         // Search fields and structural rows always remain visible. Filtering
         // applies only to actionable result controls in Launcher/Files.
         if !matches!(window.id.as_str(), "launcher" | "files")
@@ -485,7 +487,6 @@ impl Compositor {
 
         Self::ascii_contains_case_insensitive(&row.text, query)
             || Self::ascii_contains_case_insensitive(&row.action, query)
-            || index == usize::MAX
     }
 
     fn visible_result_count(&self, window: &Window) -> usize {
@@ -1315,6 +1316,10 @@ impl Compositor {
         }
 
         for (index, row) in window.rows.iter().enumerate() {
+            if !self.row_matches_search(&window, index, row) {
+                continue;
+            }
+
             let managed = row.width > 0 && row.height > 0;
             let x = window.x + if managed { row.x } else { 24 };
             let y = window.y + if managed {
@@ -1461,6 +1466,25 @@ impl Compositor {
                     }
                     self.text_clipped(x + 14, y + ((height - 14) / 2).max(0),
                                       &row.text, 2, ink, content_clip);
+                }
+            }
+        }
+
+        if matches!(window.id.as_str(), "launcher" | "files") {
+            let query = self.search_query(&window.id).unwrap_or("");
+            if !query.is_empty() && self.visible_result_count(&window) == 0 {
+                if let Some(search) = window.rows.iter().find(|row| row.kind == b's') {
+                    let empty_y = window.y + search.y
+                        - if Self::is_scrollable(&window) { window.scroll_y } else { 0 }
+                        + search.height + 18;
+                    self.text_clipped(
+                        window.x + search.x + 8,
+                        empty_y,
+                        "NO MATCHES",
+                        1,
+                        0x00777f85,
+                        content_clip,
+                    );
                 }
             }
         }
