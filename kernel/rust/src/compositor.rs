@@ -486,7 +486,54 @@ impl Compositor {
         if query.is_empty() { return true; }
 
         Self::ascii_contains_case_insensitive(&row.text, query)
-            || Self::ascii_contains_case_insensitive(&row.action, query)
+    }
+
+    fn filtered_frame(&self, window: &Window, index: usize, row: &Row)
+        -> (i32, i32, i32, i32) {
+        if !matches!(window.id.as_str(), "launcher" | "files")
+            || matches!(row.kind, b'h' | b's' | b'e' | b'l' | b't')
+            || row.action.is_empty()
+            || self.search_query(&window.id).unwrap_or("").is_empty() {
+            return (row.x, row.y, row.width, row.height);
+        }
+
+        let mut first_x = i32::MAX;
+        let mut last_right = i32::MIN;
+        let mut gap = 12;
+        let mut visible_before = 0usize;
+        let mut visible_total = 0usize;
+        let mut previous_right: Option<i32> = None;
+
+        for (candidate_index, candidate) in window.rows.iter().enumerate() {
+            if matches!(candidate.kind, b'h' | b's' | b'e' | b'l' | b't')
+                || candidate.action.is_empty() {
+                continue;
+            }
+
+            first_x = first_x.min(candidate.x);
+            last_right = last_right.max(candidate.x.saturating_add(candidate.width));
+            if let Some(right) = previous_right {
+                gap = (candidate.x - right).max(0);
+            }
+            previous_right = Some(candidate.x.saturating_add(candidate.width));
+
+            if self.row_matches_search(window, candidate_index, candidate) {
+                if candidate_index < index {
+                    visible_before += 1;
+                }
+                visible_total += 1;
+            }
+        }
+
+        if visible_total == 0 || first_x == i32::MAX || last_right <= first_x {
+            return (row.x, row.y, row.width, row.height);
+        }
+
+        let span = last_right - first_x;
+        let gaps = gap.saturating_mul(visible_total.saturating_sub(1) as i32);
+        let width = ((span - gaps) / visible_total as i32).max(1);
+        let x = first_x + visible_before as i32 * (width + gap);
+        (x, row.y, width, row.height)
     }
 
     fn visible_result_count(&self, window: &Window) -> usize {
