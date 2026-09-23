@@ -849,8 +849,10 @@ impl Compositor {
                     || !self.row_matches_search(window, index, row) {
                     continue;
                 }
-                if local_x >= row.x && local_x < row.x + row.width
-                    && local_y >= row.y && local_y < row.y + row.height {
+                let (row_x, row_y, row_width, row_height) =
+                    self.filtered_frame(window, index, row);
+                if local_x >= row_x && local_x < row_x + row_width
+                    && local_y >= row_y && local_y < row_y + row_height {
                     return Some((window.id.clone(), index));
                 }
             }
@@ -1071,10 +1073,14 @@ impl Compositor {
 
         let (row, in_rows) = if laid_out {
             let row = window.rows.iter().enumerate().position(|(index, row)| {
-                row.width > 0 && row.height > 0
-                    && self.row_matches_search(&window, index, row)
-                    && local_x >= row.x && local_x < row.x + row.width
-                    && local_y >= row.y && local_y < row.y + row.height
+                if row.width <= 0 || row.height <= 0
+                    || !self.row_matches_search(&window, index, row) {
+                    return false;
+                }
+                let (row_x, row_y, row_width, row_height) =
+                    self.filtered_frame(&window, index, row);
+                local_x >= row_x && local_x < row_x + row_width
+                    && local_y >= row_y && local_y < row_y + row_height
             }).unwrap_or(usize::MAX);
             (row, row != usize::MAX)
         } else if window.role == b'D' {
@@ -1102,11 +1108,13 @@ impl Compositor {
                     self.focused_control = Some((window.id.clone(), row));
 
                     if Self::row_is_editable(control) {
+                        let (control_x, _, control_width, _) =
+                            self.filtered_frame(&window, row, control);
                         self.place_edit_cursor(
                             &window.id,
                             row,
-                            local_x - control.x,
-                            control.width,
+                            local_x - control_x,
+                            control_width,
                             if control.kind == b'e' {
                                 control.text.len() as i32 * 12
                             } else {
@@ -1368,14 +1376,16 @@ impl Compositor {
             }
 
             let managed = row.width > 0 && row.height > 0;
-            let x = window.x + if managed { row.x } else { 24 };
-            let y = window.y + if managed {
-                row.y - if Self::is_scrollable(&window) { window.scroll_y } else { 0 }
+            let (layout_x, layout_y, layout_width, layout_height) = if managed {
+                self.filtered_frame(&window, index, row)
             } else {
-                60 + index as i32 * 42
+                (24, 60 + index as i32 * 42, window.width - 48, 34)
             };
-            let width = if managed { row.width } else { window.width - 48 };
-            let height = if managed { row.height } else { 34 };
+            let x = window.x + layout_x;
+            let y = window.y + layout_y
+                - if managed && Self::is_scrollable(&window) { window.scroll_y } else { 0 };
+            let width = layout_width;
+            let height = layout_height;
 
             if content_clip.intersect(x, y, width, height).is_none() {
                 continue;
