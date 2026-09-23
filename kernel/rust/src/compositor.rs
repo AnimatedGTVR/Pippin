@@ -337,6 +337,8 @@ impl Compositor {
             // scrolling. This makes Space text, Home/End caret movement, etc.
             let (edited, action) = self.handle_edit_key(scan, text, extended);
             if edited {
+                self.repair_focus_scope();
+                self.hovered_control = self.control_at(self.cursor_x, self.cursor_y);
                 self.render();
                 return (action, Vec::new());
             }
@@ -442,6 +444,106 @@ impl Compositor {
         self.left_down = left;
         self.render();
         (action, events)
+    }
+
+    fn ascii_contains_case_insensitive(haystack: &str, needle: &str) -> bool {
+        if needle.is_empty() { return true; }
+        let hay = haystack.as_bytes();
+        let need = needle.as_bytes();
+        if need.len() > hay.len() { return false; }
+
+        for start in 0..=hay.len() - need.len() {
+            let mut matched = true;
+            for offset in 0..need.len() {
+                if hay[start + offset].to_ascii_lowercase()
+                    != need[offset].to_ascii_lowercase() {
+                    matched = false;
+                    break;
+                }
+            }
+            if matched { return true; }
+        }
+        false
+    }
+
+    fn search_query(&self, window_id: &str) -> Option<&str> {
+        let window = self.windows.iter().find(|window| window.id == window_id)?;
+        let search_row = window.rows.iter().position(|row| row.kind == b's')?;
+        self.edit_index(window_id, search_row)
+            .map(|index| self.edits[index].value.as_str())
+    }
+
+    fn row_matches_search(&self, window: &Window, _index: usize, row: &Row) -> bool {
+        // Search fields and structural rows always remain visible. Filtering
+        // applies only to actionable result controls in Launcher/Files.
+        if !matches!(window.id.as_str(), "launcher" | "files")
+            || matches!(row.kind, b'h' | b's' | b'e' | b'l' | b't')
+            || row.action.is_empty() {
+            return true;
+        }
+
+        let Some(query) = self.search_query(&window.id) else { return true; };
+        if query.is_empty() { return true; }
+
+        Self::ascii_contains_case_insensitive(&row.text, query)
+    }
+
+    fn filtered_frame(&self, window: &Window, index: usize, row: &Row)
+        -> (i32, i32, i32, i32) {
+        if !matches!(window.id.as_str(), "launcher" | "files")
+            || matches!(row.kind, b'h' | b's' | b'e' | b'l' | b't')
+            || row.action.is_empty()
+            || self.search_query(&window.id).unwrap_or("").is_empty() {
+            return (row.x, row.y, row.width, row.height);
+        }
+
+        let mut first_x = i32::MAX;
+        let mut last_right = i32::MIN;
+        let mut gap = 12;
+        let mut visible_before = 0usize;
+        let mut visible_total = 0usize;
+        let mut previous_right: Option<i32> = None;
+
+        for (candidate_index, candidate) in window.rows.iter().enumerate() {
+            if matches!(candidate.kind, b'h' | b's' | b'e' | b'l' | b't')
+                || candidate.action.is_empty() {
+                continue;
+            }
+
+            first_x = first_x.min(candidate.x);
+            last_right = last_right.max(candidate.x.saturating_add(candidate.width));
+            if let Some(right) = previous_right {
+                gap = (candidate.x - right).max(0);
+            }
+            previous_right = Some(candidate.x.saturating_add(candidate.width));
+
+            if self.row_matches_search(window, candidate_index, candidate) {
+                if candidate_index < index {
+                    visible_before += 1;
+                }
+                visible_total += 1;
+            }
+        }
+
+        if visible_total == 0 || first_x == i32::MAX || last_right <= first_x {
+            return (row.x, row.y, row.width, row.height);
+        }
+
+        let span = last_right - first_x;
+        let gaps = gap.saturating_mul(visible_total.saturating_sub(1) as i32);
+        let width = ((span - gaps) / visible_total as i32).max(1);
+        let x = first_x + visible_before as i32 * (width + gap);
+        (x, row.y, width, row.height)
+    }
+
+    fn visible_result_count(&self, window: &Window) -> usize {
+        window.rows.iter().enumerate()
+            .filter(|(index, row)| {
+                !matches!(row.kind, b'h' | b's' | b'e' | b'l' | b't')
+                    && !row.action.is_empty()
+                    && self.row_matches_search(window, *index, row)
+            })
+            .count()
     }
 
     fn row_is_editable(row: &Row) -> bool {
@@ -743,11 +845,14 @@ impl Compositor {
             for (index, row) in window.rows.iter().enumerate() {
                 if row.width <= 0 || row.height <= 0
                     || row.action.is_empty()
-                    || row.flags & CONTROL_FLAG_DISABLED != 0 {
+                    || row.flags & CONTROL_FLAG_DISABLED != 0
+                    || !self.row_matches_search(window, index, row) {
                     continue;
                 }
-                if local_x >= row.x && local_x < row.x + row.width
-                    && local_y >= row.y && local_y < row.y + row.height {
+                let (row_x, row_y, row_width, row_height) =
+                    self.filtered_frame(window, index, row);
+                if local_x >= row_x && local_x < row_x + row_width
+                    && local_y >= row_y && local_y < row_y + row_height {
                     return Some((window.id.clone(), index));
                 }
             }
@@ -796,16 +901,16 @@ impl Compositor {
 
         let keep_focus = self.focused_control.as_ref().is_some_and(|(id, index)| {
             self.windows.iter().find(|window| !window.minimized && &window.id == id)
-                .and_then(|window| {
+                .is_some_and(|window| {
                     if !self.focus_scope_accepts(window) {
-                        return None;
+                        return false;
                     }
-                    window.rows.get(*index)
-                })
-                .is_some_and(|row| {
-                    row.flags & CONTROL_FLAG_FOCUSABLE != 0
-                        && row.flags & CONTROL_FLAG_DISABLED == 0
-                        && !row.action.is_empty()
+                    window.rows.get(*index).is_some_and(|row| {
+                        row.flags & CONTROL_FLAG_FOCUSABLE != 0
+                            && row.flags & CONTROL_FLAG_DISABLED == 0
+                            && !row.action.is_empty()
+                            && self.row_matches_search(window, *index, row)
+                    })
                 })
         });
 
@@ -824,7 +929,8 @@ impl Compositor {
         let row = window.rows.get(*index)?;
         if row.flags & CONTROL_FLAG_DISABLED != 0
             || row.flags & CONTROL_FLAG_FOCUSABLE == 0
-            || row.action.is_empty() {
+            || row.action.is_empty()
+            || !self.row_matches_search(window, *index, row) {
             return None;
         }
         Some(row.action.clone())
@@ -842,7 +948,8 @@ impl Compositor {
                 if row.width > 0 && row.height > 0
                     && row.flags & CONTROL_FLAG_FOCUSABLE != 0
                     && row.flags & CONTROL_FLAG_DISABLED == 0
-                    && !row.action.is_empty() {
+                    && !row.action.is_empty()
+                    && self.row_matches_search(window, index, row) {
                     controls.push((window.id.clone(), index));
                 }
             }
@@ -965,10 +1072,15 @@ impl Compositor {
         let laid_out = window.rows.iter().any(|row| row.width > 0 && row.height > 0);
 
         let (row, in_rows) = if laid_out {
-            let row = window.rows.iter().position(|row| {
-                row.width > 0 && row.height > 0
-                    && local_x >= row.x && local_x < row.x + row.width
-                    && local_y >= row.y && local_y < row.y + row.height
+            let row = window.rows.iter().enumerate().position(|(index, row)| {
+                if row.width <= 0 || row.height <= 0
+                    || !self.row_matches_search(&window, index, row) {
+                    return false;
+                }
+                let (row_x, row_y, row_width, row_height) =
+                    self.filtered_frame(&window, index, row);
+                local_x >= row_x && local_x < row_x + row_width
+                    && local_y >= row_y && local_y < row_y + row_height
             }).unwrap_or(usize::MAX);
             (row, row != usize::MAX)
         } else if window.role == b'D' {
@@ -996,11 +1108,13 @@ impl Compositor {
                     self.focused_control = Some((window.id.clone(), row));
 
                     if Self::row_is_editable(control) {
+                        let (control_x, _, control_width, _) =
+                            self.filtered_frame(&window, row, control);
                         self.place_edit_cursor(
                             &window.id,
                             row,
-                            local_x - control.x,
-                            control.width,
+                            local_x - control_x,
+                            control_width,
                             if control.kind == b'e' {
                                 control.text.len() as i32 * 12
                             } else {
@@ -1257,15 +1371,21 @@ impl Compositor {
         }
 
         for (index, row) in window.rows.iter().enumerate() {
+            if !self.row_matches_search(&window, index, row) {
+                continue;
+            }
+
             let managed = row.width > 0 && row.height > 0;
-            let x = window.x + if managed { row.x } else { 24 };
-            let y = window.y + if managed {
-                row.y - if Self::is_scrollable(&window) { window.scroll_y } else { 0 }
+            let (layout_x, layout_y, layout_width, layout_height) = if managed {
+                self.filtered_frame(&window, index, row)
             } else {
-                60 + index as i32 * 42
+                (24, 60 + index as i32 * 42, window.width - 48, 34)
             };
-            let width = if managed { row.width } else { window.width - 48 };
-            let height = if managed { row.height } else { 34 };
+            let x = window.x + layout_x;
+            let y = window.y + layout_y
+                - if managed && Self::is_scrollable(&window) { window.scroll_y } else { 0 };
+            let width = layout_width;
+            let height = layout_height;
 
             if content_clip.intersect(x, y, width, height).is_none() {
                 continue;
@@ -1403,6 +1523,25 @@ impl Compositor {
                     }
                     self.text_clipped(x + 14, y + ((height - 14) / 2).max(0),
                                       &row.text, 2, ink, content_clip);
+                }
+            }
+        }
+
+        if matches!(window.id.as_str(), "launcher" | "files") {
+            let query = self.search_query(&window.id).unwrap_or("");
+            if !query.is_empty() && self.visible_result_count(&window) == 0 {
+                if let Some(search) = window.rows.iter().find(|row| row.kind == b's') {
+                    let empty_y = window.y + search.y
+                        - if Self::is_scrollable(&window) { window.scroll_y } else { 0 }
+                        + search.height + 18;
+                    self.text_clipped(
+                        window.x + search.x + 8,
+                        empty_y,
+                        "NO MATCHES",
+                        1,
+                        0x00777f85,
+                        content_clip,
+                    );
                 }
             }
         }

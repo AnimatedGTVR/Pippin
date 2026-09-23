@@ -232,9 +232,9 @@ impl Shell {
                     return;
                 }
                 "launcher.search" | "files.search" => {
-                    // Search filtering is the next consumer layer. Keep the
-                    // query local for now rather than leaking a control
-                    // character into the legacy COM2 action protocol.
+                    // Filtering already happens live in the compositor. Enter
+                    // simply records the submitted query for diagnostics while
+                    // keeping it out of the legacy COM2 action protocol.
                     let _ = writeln!(self.terminal, "[{}] query: {}", name, value);
                     return;
                 }

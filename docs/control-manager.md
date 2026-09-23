@@ -407,6 +407,40 @@ without changing their C++ layout trees. Their current query is kept locally and
 Enter produces a search submission hook. Actual result filtering is intentionally
 left for the consumer layer instead of being hardcoded into the compositor.
 
+## Live search filtering
+
+Launcher and Files now consume their `searchBox()` values immediately while
+typing. Enter is no longer required to update visible results.
+
+Filtering is intentionally a consumer/runtime concern:
+
+- C++ still defines the retained tree and original result controls
+- the editable search value remains compositor-side runtime state
+- Rust decides which result leaves are currently visible
+- the shell ABI remains unchanged
+
+Matching is ASCII case-insensitive against the visible control label. Structural
+controls such as headings, labels, toggles, and the search field itself are never
+filtered.
+
+Filtering participates in every interaction path:
+
+- hidden results are not rendered
+- hidden results do not receive hover or clicks
+- hidden results are skipped by Tab / Shift+Tab
+- a filtered-out focused result cannot activate through Enter/Space
+- hover state is recomputed immediately as the query changes
+
+Visible result controls also reflow across their original action-row span.
+For example, filtering Launcher down to only Terminal expands Terminal across the
+result row instead of leaving empty Files/Settings slots.
+
+If a non-empty query has no visible result, the content area shows
+`NO MATCHES`.
+
+The existing Enter submission hook remains available for future search history
+or application-side consumers, but live visibility no longer depends on it.
+
 ## Why this boundary
 
 For now:
@@ -422,9 +456,9 @@ the C++ shell moves fully into ring-3 ELF processes.
 
 The Control Manager should stay focused:
 
-1. add live Launcher/Files filtering consumers for search queries
-2. add native Terminal output/history instead of serial-only command output
-3. add draggable scrollbar thumbs and optional inertial/smooth scrolling
-4. add runtime relayout so maximized/resized windows can recompute their trees
+1. add native Terminal output/history instead of serial-only command output
+2. add draggable scrollbar thumbs and optional inertial/smooth scrolling
+3. add runtime relayout so maximized/resized windows can recompute their trees
+4. add richer search metadata/ranking once app discovery exists
 5. once user apps can own surfaces directly, move this same C++ manager into the
    native app/toolkit layer
