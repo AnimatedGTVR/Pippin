@@ -851,16 +851,16 @@ impl Compositor {
 
         let keep_focus = self.focused_control.as_ref().is_some_and(|(id, index)| {
             self.windows.iter().find(|window| !window.minimized && &window.id == id)
-                .and_then(|window| {
+                .is_some_and(|window| {
                     if !self.focus_scope_accepts(window) {
-                        return None;
+                        return false;
                     }
-                    window.rows.get(*index)
-                })
-                .is_some_and(|row| {
-                    row.flags & CONTROL_FLAG_FOCUSABLE != 0
-                        && row.flags & CONTROL_FLAG_DISABLED == 0
-                        && !row.action.is_empty()
+                    window.rows.get(*index).is_some_and(|row| {
+                        row.flags & CONTROL_FLAG_FOCUSABLE != 0
+                            && row.flags & CONTROL_FLAG_DISABLED == 0
+                            && !row.action.is_empty()
+                            && self.row_matches_search(window, *index, row)
+                    })
                 })
         });
 
@@ -879,7 +879,8 @@ impl Compositor {
         let row = window.rows.get(*index)?;
         if row.flags & CONTROL_FLAG_DISABLED != 0
             || row.flags & CONTROL_FLAG_FOCUSABLE == 0
-            || row.action.is_empty() {
+            || row.action.is_empty()
+            || !self.row_matches_search(window, *index, row) {
             return None;
         }
         Some(row.action.clone())
@@ -1021,8 +1022,9 @@ impl Compositor {
         let laid_out = window.rows.iter().any(|row| row.width > 0 && row.height > 0);
 
         let (row, in_rows) = if laid_out {
-            let row = window.rows.iter().position(|row| {
+            let row = window.rows.iter().enumerate().position(|(index, row)| {
                 row.width > 0 && row.height > 0
+                    && self.row_matches_search(&window, index, row)
                     && local_x >= row.x && local_x < row.x + row.width
                     && local_y >= row.y && local_y < row.y + row.height
             }).unwrap_or(usize::MAX);
