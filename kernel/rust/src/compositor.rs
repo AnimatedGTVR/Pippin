@@ -444,6 +444,60 @@ impl Compositor {
         (action, events)
     }
 
+    fn ascii_contains_case_insensitive(haystack: &str, needle: &str) -> bool {
+        if needle.is_empty() { return true; }
+        let hay = haystack.as_bytes();
+        let need = needle.as_bytes();
+        if need.len() > hay.len() { return false; }
+
+        for start in 0..=hay.len() - need.len() {
+            let mut matched = true;
+            for offset in 0..need.len() {
+                if hay[start + offset].to_ascii_lowercase()
+                    != need[offset].to_ascii_lowercase() {
+                    matched = false;
+                    break;
+                }
+            }
+            if matched { return true; }
+        }
+        false
+    }
+
+    fn search_query(&self, window_id: &str) -> Option<&str> {
+        let window = self.windows.iter().find(|window| window.id == window_id)?;
+        let search_row = window.rows.iter().position(|row| row.kind == b's')?;
+        self.edit_index(window_id, search_row)
+            .map(|index| self.edits[index].value.as_str())
+    }
+
+    fn row_matches_search(&self, window: &Window, index: usize, row: &Row) -> bool {
+        // Search fields and structural rows always remain visible. Filtering
+        // applies only to actionable result controls in Launcher/Files.
+        if !matches!(window.id.as_str(), "launcher" | "files")
+            || matches!(row.kind, b'h' | b's' | b'e' | b'l' | b't')
+            || row.action.is_empty() {
+            return true;
+        }
+
+        let Some(query) = self.search_query(&window.id) else { return true; };
+        if query.is_empty() { return true; }
+
+        Self::ascii_contains_case_insensitive(&row.text, query)
+            || Self::ascii_contains_case_insensitive(&row.action, query)
+            || index == usize::MAX
+    }
+
+    fn visible_result_count(&self, window: &Window) -> usize {
+        window.rows.iter().enumerate()
+            .filter(|(index, row)| {
+                !matches!(row.kind, b'h' | b's' | b'e' | b'l' | b't')
+                    && !row.action.is_empty()
+                    && self.row_matches_search(window, *index, row)
+            })
+            .count()
+    }
+
     fn row_is_editable(row: &Row) -> bool {
         matches!(row.kind, b's' | b'e')
             && row.flags & CONTROL_FLAG_DISABLED == 0
