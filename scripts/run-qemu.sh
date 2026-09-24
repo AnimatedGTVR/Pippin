@@ -58,7 +58,8 @@ for option in "$@"; do
     esac
 done
 
-args=(-machine q35 -m "${PIPPIN_QEMU_MEMORY_MB}M")
+args=(-machine q35 -m "${PIPPIN_QEMU_MEMORY_MB}M"
+      -device isa-debug-exit,iobase=0x500,iosize=0x02)
 if [[ "$display" == "none" ]]; then
         args+=( -display none )
 elif ! $default_qemu; then
