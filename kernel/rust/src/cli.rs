@@ -107,23 +107,17 @@ pub struct Shell {
 
 impl Shell {
     pub fn new(mut terminal: Terminal, bundle: Option<file::Bundle<'static>>, event_port: u16) -> Self {
-        // The native C++ shell is now the default boot experience. The text
-        // command shell remains available with Esc / the `console` command.
-        let desktop = desktop::Desktop::open();
-        let desktop_ready = desktop.is_some();
-        if desktop_ready { terminal.set_screen_enabled(false); }
+        // Boot into the command shell. The graphical desktop starts only
+        // when the user explicitly runs the `desktop` command.
+        let desktop = None;
 
         let mut shell = Self {
             terminal, line: [0; LINE_CAPACITY], len: 0,
             shift: false, alt: false, terminal_capture: false, caps: false, extended: false, last_was_cr: false,
             bundle, event_port, desktop, bridge: bridge::Bridge::new(), theme: Theme::Classic,
         };
-        let _ = writeln!(shell.terminal, "Pippin command shell (native C++ desktop)");
-        if desktop_ready {
-            let _ = writeln!(shell.terminal, "Native desktop shell active; press Esc for VGA console.");
-        } else {
-            let _ = writeln!(shell.terminal, "Desktop unavailable. Type 'help' for commands.");
-        }
+        let _ = writeln!(shell.terminal, "Pippin command shell");
+        let _ = writeln!(shell.terminal, "Type 'help' for commands or 'desktop' to start the graphical desktop.");
         // COM1 remains an interactive diagnostics/command console even while
         // the graphical desktop is active.
         shell.prompt();
