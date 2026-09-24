@@ -8,6 +8,48 @@ use crate::{bridge, desktop, display, elf, ffi, file, interrupts, mem, serial};
 
 const LINE_CAPACITY: usize = 128;
 
+const PIPPIN_LOGO: &str = r#"/$$$$  /$                     /$
+| $__  $|__/                    |__/
+| $  \\ $ /$  /$$$   /$$$  /$ /$$$$
+| $$$$/| $ /$__  $ /$__  $| $| $__  $
+| $____/ | $| $  \\ $| $  \\ $| $| $  \\ $
+| $      | $| $  | $| $  | $| $| $  | $
+| $      | $| $$$$/| $$$$/| $| $  | $
+|__/      |__/| $____/ | $____/ |__/|__/  |__/
+              | $      | $
+              | $      | $
+              |__/      |__/"#;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Theme {
+    Classic,
+    Amber,
+    Green,
+    Ice,
+    Mono,
+}
+
+impl Theme {
+    fn name(self) -> &'static str {
+        match self {
+            Theme::Classic => "classic",
+            Theme::Amber => "amber",
+            Theme::Green => "green",
+            Theme::Ice => "ice",
+            Theme::Mono => "mono",
+        }
+    }
+
+    fn ansi(self) -> &'static str {
+        match self {
+            Theme::Classic | Theme::Mono => "\x1b[0m",
+            Theme::Amber => "\x1b[33m",
+            Theme::Green => "\x1b[32m",
+            Theme::Ice => "\x1b[36m",
+        }
+    }
+}
+
 pub struct Terminal {
     screen: Option<display::TextConsole>,
     screen_enabled: bool,
@@ -60,6 +102,7 @@ pub struct Shell {
     event_port: u16,
     desktop: Option<desktop::Desktop>,
     bridge: bridge::Bridge,
+    theme: Theme,
 }
 
 impl Shell {
@@ -73,7 +116,7 @@ impl Shell {
         let mut shell = Self {
             terminal, line: [0; LINE_CAPACITY], len: 0,
             shift: false, alt: false, terminal_capture: false, caps: false, extended: false, last_was_cr: false,
-            bundle, event_port, desktop, bridge: bridge::Bridge::new(),
+            bundle, event_port, desktop, bridge: bridge::Bridge::new(), theme: Theme::Classic,
         };
         let _ = writeln!(shell.terminal, "Pippin command shell (native C++ desktop)");
         if desktop_ready {
@@ -87,7 +130,45 @@ impl Shell {
         shell
     }
 
-    fn prompt(&mut self) { let _ = self.terminal.write_str("pippin> "); }
+    fn prompt(&mut self) {
+        let _ = self.terminal.write_str(self.theme.ansi());
+        let _ = self.terminal.write_str("pippin> ");
+    }
+
+    fn print_logo(&mut self) {
+        let _ = self.terminal.write_str(self.theme.ansi());
+        let _ = writeln!(self.terminal, "{}", PIPPIN_LOGO);
+        let _ = self.terminal.write_str("\x1b[0m");
+    }
+
+    fn print_help(&mut self) {
+        let _ = writeln!(self.terminal, "Pippin CLI");
+        let _ = writeln!(self.terminal, "  System:     fetch  uname  uptime  mem  pci  about");
+        let _ = writeln!(self.terminal, "  Files:      ls  cat  echo");
+        let _ = writeln!(self.terminal, "  Apps:       apps  run");
+        let _ = writeln!(self.terminal, "  Desktop:    desktop  console");
+        let _ = writeln!(self.terminal, "  Appearance: logo  theme  clear");
+        let _ = writeln!(self.terminal, "  General:    help");
+    }
+
+    fn set_theme(&mut self, name: &str) {
+        let theme = match name {
+            "classic" => Some(Theme::Classic),
+            "amber" => Some(Theme::Amber),
+            "green" => Some(Theme::Green),
+            "ice" => Some(Theme::Ice),
+            "mono" => Some(Theme::Mono),
+            _ => None,
+        };
+        if let Some(theme) = theme {
+            self.theme = theme;
+            let _ = self.terminal.write_str(self.theme.ansi());
+            let _ = writeln!(self.terminal, "Theme set to {}.", self.theme.name());
+            let _ = self.terminal.write_str("\x1b[0m");
+        } else {
+            let _ = writeln!(self.terminal, "theme: unknown theme '{}'", name);
+        }
+    }
 
     pub fn poll_serial(&mut self) {
         for _ in 0..32 {
@@ -298,9 +379,17 @@ impl Shell {
     fn execute(&mut self, command: &str) {
         match command {
             "" => {}
-            "help" => {
-                let _ = writeln!(self.terminal,
-                    "help  fetch  desktop  console  clear  uname  uptime  mem  pci  apps  run  ls  cat  echo");
+            "help" => self.print_help(),
+            "logo" | "pippin" => self.print_logo(),
+            "about" => {
+                let _ = writeln!(self.terminal, "Pippin OS 0.1.0");
+                let _ = writeln!(self.terminal, "Native desktop operating system");
+                let _ = writeln!(self.terminal, "Architecture: x86_64");
+                let _ = writeln!(self.terminal, "CLI: bootstrap shell");
+            }
+            "theme" | "theme list" => {
+                let _ = writeln!(self.terminal, "Themes: classic  amber  green  ice  mono");
+                let _ = writeln!(self.terminal, "Current: {}", self.theme.name());
             }
             "desktop" => {
                 if self.desktop.is_some() {
@@ -371,6 +460,9 @@ impl Shell {
                     let _ = writeln!(self.terminal, "cat: hello.pipb: not found");
                 }
             }
+            _ if command.starts_with("theme ") => {
+                self.set_theme(command[6..].trim());
+            }
             _ if command.starts_with("echo ") => {
                 let _ = writeln!(self.terminal, "{}", &command[5..]);
             }
@@ -382,13 +474,14 @@ impl Shell {
         let ticks = interrupts::ticks();
         let free_kib = mem::free_frame_count() * 4;
         let bundle = self.bundle.map(|bundle| bundle.name).unwrap_or("none");
-        let _ = writeln!(self.terminal, "   .------.     Pippin OS 0.1.0");
-        let _ = writeln!(self.terminal, "  /  .--.  \\    Architecture: x86_64");
-        let _ = writeln!(self.terminal, " |  /    \\  |   Uptime: {}.{:03} s",
-            ticks / 1000, ticks % 1000);
-        let _ = writeln!(self.terminal, " |  \\____/  |   Free memory: {} KiB", free_kib);
-        let _ = writeln!(self.terminal, "  \\        /    PCI devices: {}", ffi::pci_device_count());
-        let _ = writeln!(self.terminal, "   '------'     App bundle: {}", bundle);
+        self.print_logo();
+        let _ = writeln!(self.terminal, "Pippin OS 0.1.0");
+        let _ = writeln!(self.terminal, "Architecture: x86_64");
+        let _ = writeln!(self.terminal, "Uptime: {}.{:03} s", ticks / 1000, ticks % 1000);
+        let _ = writeln!(self.terminal, "Free memory: {} KiB", free_kib);
+        let _ = writeln!(self.terminal, "PCI devices: {}", ffi::pci_device_count());
+        let _ = writeln!(self.terminal, "App bundle: {}", bundle);
+        let _ = writeln!(self.terminal, "Theme: {}", self.theme.name());
     }
 }
 
