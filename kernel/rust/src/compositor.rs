@@ -13,17 +13,17 @@ const MAX_WINDOWS: usize = 16;
 // Pippin chrome: compact GNOME-like header bars, Skift-inspired soft surfaces,
 // and the deliberately simple geometry of Redox/Orbital.
 const CHROME_INK: u32 = 0x00252b31;
-const CHROME_SURFACE: u32 = 0x00f7f7f5;
-const CHROME_HEADER: u32 = 0x00e9ecef;
-const CHROME_HEADER_INACTIVE: u32 = 0x00dfe3e6;
-const CHROME_BORDER: u32 = 0x009aa2a8;
-const CHROME_ACCENT: u32 = 0x003d78a8;
+const CHROME_SURFACE: u32 = 0x00f8fafc;
+const CHROME_HEADER: u32 = 0x00eef3f7;
+const CHROME_HEADER_INACTIVE: u32 = 0x00e3e8ed;
+const CHROME_BORDER: u32 = 0x008b99a6;
+const CHROME_ACCENT: u32 = 0x003b82c4;
 const CHROME_CLOSE: u32 = 0x00d95d55;
 const CHROME_SHADOW: u32 = 0x00151b22;
-const SHELL_DARK: u32 = 0x0014191f;
-const SHELL_SURFACE: u32 = 0x00222931;
-const SHELL_SURFACE_HOVER: u32 = 0x002d3540;
-const SHELL_SURFACE_PRESSED: u32 = 0x00384452;
+const SHELL_DARK: u32 = 0x0010161d;
+const SHELL_SURFACE: u32 = 0x001d2833;
+const SHELL_SURFACE_HOVER: u32 = 0x002a3947;
+const SHELL_SURFACE_PRESSED: u32 = 0x00364859;
 const SHELL_DISABLED: u32 = 0x0020272e;
 const CONTROL_LIGHT_HOVER: u32 = 0x00eef4f8;
 const CONTROL_LIGHT_PRESSED: u32 = 0x00dce8f2;
@@ -134,7 +134,7 @@ impl Compositor {
         let mut compositor = Self {
             pixels: vec![0; WIDTH * HEIGHT], clients: WindowServer::new(),
             windows: Vec::new(), next_id: 1,
-            wallpaper_base: 0x002f80ed,
+            wallpaper_base: 0x001c5f91,
             cursor_x: (WIDTH / 2) as i32, cursor_y: (HEIGHT / 2) as i32,
             left_down: false,
             hovered_control: None,
@@ -249,7 +249,7 @@ impl Compositor {
         if let Some(id) = line.strip_prefix("X|") {
             self.windows.retain(|window| window.id != id);
             self.edits.retain(|edit| edit.window_id != id);
-            if id == "wallpaper" { self.wallpaper_base = 0x002f80ed; }
+            if id == "wallpaper" { self.wallpaper_base = 0x001c5f91; }
             self.repair_focus_scope();
             self.render();
             return true;
@@ -1163,10 +1163,23 @@ impl Compositor {
     }
 
     fn wallpaper(&mut self) {
-        // The desktop background is intentionally simple: one clean Pippin blue.
-        // Shell surfaces, windows, controls, dock, launcher and notifications provide
-        // the visual structure instead of baking decoration into the wallpaper.
-        self.pixels.fill(self.wallpaper_base);
+        // Give Pippin depth without needing image assets yet: a subtle vertical
+        // blue gradient plus a sparse diagonal highlight pattern.
+        for y in 0..HEIGHT as i32 {
+            let t = y as u32;
+            let base = self.wallpaper_base;
+            let r = (((base >> 16) & 0xff) * (760 - t.min(600) / 4) / 760).min(255);
+            let g = (((base >> 8) & 0xff) * (820 - t.min(600) / 5) / 820).min(255);
+            let b = ((base & 0xff) + (t / 18)).min(255);
+            let color = (r << 16) | (g << 8) | b;
+            self.fill_rect(0, y, WIDTH as i32, 1, color);
+        }
+        for y in (84..HEIGHT as i32).step_by(72) {
+            let offset = (y / 72) * 41;
+            for x in (-80..WIDTH as i32).step_by(190) {
+                self.fill_rect(x + offset % 190, y, 96, 1, 0x002f739f);
+            }
+        }
     }
 
     fn window(&mut self, window: Window, focused: bool) {
@@ -1312,11 +1325,14 @@ impl Compositor {
             return;
         }
 
-        // Layered shadow gives depth without the old heavy black frame.
-        self.fill_rect(window.x + 8, window.y + 10, window.width, window.height, CHROME_SHADOW);
-        self.fill_rect(window.x + 4, window.y + 5, window.width, window.height, 0x00323a42);
-        self.fill_rect(window.x, window.y, window.width, window.height, CHROME_SURFACE);
-        self.border(window.x, window.y, window.width, window.height, CHROME_BORDER);
+        // Softer layered shadow and stepped rounded shell. The rasterizer is
+        // intentionally simple, but this avoids the old box-with-a-black-frame look.
+        self.rounded_rect(window.x + 9, window.y + 11, window.width, window.height,
+                          CHROME_SHADOW, CHROME_SHADOW);
+        self.rounded_rect(window.x + 4, window.y + 5, window.width, window.height,
+                          0x00323a42, 0x00323a42);
+        self.rounded_rect(window.x, window.y, window.width, window.height,
+                          CHROME_SURFACE, CHROME_BORDER);
 
         let header = if focused { CHROME_HEADER } else { CHROME_HEADER_INACTIVE };
         self.fill_rect(window.x + 1, window.y + 1, window.width - 2, HEADER_HEIGHT, header);

@@ -22,11 +22,11 @@ constexpr pippin_shell_item shellItem(ui::Control const& control) {
 }
 
 constexpr ui::ControlSpec kPanelSpecs[] = {
-    ui::cross(ui::fixed("Search", "launcher.open", 'b', ui::ControlStyle::SEARCH, 220), 34),
+    ui::cross(ui::fixed("  Pippin  |  Search", "launcher.open", 'b', ui::ControlStyle::SEARCH, 250), 34),
     ui::spacer(),
-    ui::cross(ui::fixed("Pippin", "", 'l', ui::ControlStyle::SUBTLE, 184), 34),
+    ui::cross(ui::fixed("PIPPIN", "", 'l', ui::ControlStyle::SUBTLE, 154), 34),
     ui::spacer(),
-    ui::cross(ui::fixed("WiFi  Vol  Bat", "settings.open", 'b', ui::ControlStyle::STATUS, 220), 34),
+    ui::cross(ui::fixed("NET   VOL   PWR", "settings.open", 'b', ui::ControlStyle::STATUS, 220), 34),
 };
 
 constexpr auto kPanelControls = ui::flow(
@@ -42,8 +42,8 @@ constexpr auto kPanelControls = ui::flow(
 );
 
 static_assert(kPanelControls[0].frame.x == 12 && kPanelControls[0].frame.y == 7);
-static_assert(kPanelControls[2].frame.x == 420 && kPanelControls[2].frame.width == 184);
-static_assert(kPanelControls[4].frame.x == 792 && kPanelControls[4].frame.width == 220);
+static_assert(kPanelControls[2].frame.width == 154);
+static_assert(kPanelControls[4].frame.width == 220);
 
 constexpr pippin_shell_item kPanelItems[] = {
     shellItem(kPanelControls[0]),
@@ -301,7 +301,7 @@ constexpr pippin_shell_surface kSurfaces[] = {
     },
     {
         "dock", PIPPIN_SHELL_ROLE_DOCK, 1,
-        328, 688, 368, 68,
+        328, 684, 368, 68,
         "Dock",
         kDockItems,
         sizeof(kDockItems) / sizeof(kDockItems[0]),

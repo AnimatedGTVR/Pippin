@@ -153,13 +153,37 @@ impl Shell {
         self.terminal.write_serial_ansi("\x1b[0m");
     }
 
+    fn matrix(&mut self) {
+        // A bounded Matrix-style rain snapshot that works on both VGA text
+        // and serial without requiring timers, allocation, or terminal escapes.
+        const GLYPHS: &[u8] = b"01PIPIN<>[]{}:/\\|*+#$";
+        let seed = interrupts::ticks() as usize;
+        let _ = writeln!(self.terminal, "Pippin Matrix");
+        for row in 0..18usize {
+            for column in 0..78usize {
+                let stream = (column * 17 + seed / 37) % 23;
+                let head = (seed / 71 + column * 5) % 24;
+                let distance = (row + 24 - head) % 24;
+                let byte = if stream < 10 && distance < 7 {
+                    GLYPHS[(seed + row * 13 + column * 7) % GLYPHS.len()]
+                } else if (row * 11 + column * 19 + seed / 101) % 37 == 0 {
+                    b'.'
+                } else {
+                    b' '
+                };
+                let _ = self.terminal.write_char(byte as char);
+            }
+            let _ = self.terminal.write_char('\n');
+        }
+    }
+
     fn print_help(&mut self) {
         let _ = writeln!(self.terminal, "Pippin CLI");
         let _ = writeln!(self.terminal, "  System:     fetch  uname  uptime  mem  pci  about  shutdown  poweroff  reboot");
         let _ = writeln!(self.terminal, "  Files:      ls  cat  echo");
         let _ = writeln!(self.terminal, "  Apps:       apps  run");
         let _ = writeln!(self.terminal, "  Desktop:    desktop  console");
-        let _ = writeln!(self.terminal, "  Appearance: logo  theme  clear");
+        let _ = writeln!(self.terminal, "  Appearance: logo  theme  matrix  clear");
         let _ = writeln!(self.terminal, "  General:    help");
     }
 
@@ -394,6 +418,7 @@ impl Shell {
             "" => {}
             "help" => self.print_help(),
             "logo" | "pippin" => self.print_logo(),
+            "matrix" => self.matrix(),
             "about" => {
                 let _ = writeln!(self.terminal, "Pippin OS 0.1.0");
                 let _ = writeln!(self.terminal, "Native desktop operating system");
