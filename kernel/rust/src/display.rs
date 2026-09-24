@@ -11,18 +11,32 @@ const VGA_MEMORY: *mut u16 = 0xb8000 as *mut u16;
 pub struct TextConsole {
     row: usize,
     column: usize,
+    attribute: u8,
 }
 
 impl TextConsole {
     pub fn new() -> Self {
-        let mut console = Self { row: 0, column: 0 };
+        let mut console = Self { row: 0, column: 0, attribute: 0x1f };
         console.clear();
         console
     }
 
+    pub fn set_attribute(&mut self, attribute: u8) {
+        self.attribute = attribute;
+    }
+
+    fn blank(&self) -> u16 {
+        ((self.attribute as u16) << 8) | b' ' as u16
+    }
+
+    fn cell(&self, byte: u8) -> u16 {
+        ((self.attribute as u16) << 8) | byte as u16
+    }
+
     pub fn clear(&mut self) {
+        let blank = self.blank();
         for cell in 0..VGA_WIDTH * VGA_HEIGHT {
-            unsafe { VGA_MEMORY.add(cell).write_volatile(0x1f20); }
+            unsafe { VGA_MEMORY.add(cell).write_volatile(blank); }
         }
         self.row = 0;
         self.column = 0;
@@ -37,14 +51,14 @@ impl TextConsole {
                 if self.column > 0 {
                     self.column -= 1;
                     unsafe { VGA_MEMORY.add(self.row * VGA_WIDTH + self.column)
-                        .write_volatile(0x1f20); }
+                        .write_volatile(self.blank()); }
                 }
             }
             0x20..=0x7e => {
                 if self.column == VGA_WIDTH { self.row += 1; self.column = 0; }
                 if self.row == VGA_HEIGHT { self.scroll(); }
                 unsafe { VGA_MEMORY.add(self.row * VGA_WIDTH + self.column)
-                    .write_volatile(0x1f00 | byte as u16); }
+                    .write_volatile(self.cell(byte)); }
                 self.column += 1;
             }
             _ => {}
@@ -73,7 +87,7 @@ impl TextConsole {
         }
         for column in 0..VGA_WIDTH {
             unsafe { VGA_MEMORY.add((VGA_HEIGHT - 1) * VGA_WIDTH + column)
-                .write_volatile(0x1f20); }
+                .write_volatile(self.blank()); }
         }
         self.row = VGA_HEIGHT - 1;
     }
