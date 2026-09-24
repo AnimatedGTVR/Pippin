@@ -8,16 +8,16 @@ use crate::{bridge, desktop, display, elf, ffi, file, interrupts, mem, serial};
 
 const LINE_CAPACITY: usize = 128;
 
-const PIPPIN_LOGO: &str = r#"/$$$$  /$                     /$
-| $__  $|__/                    |__/
-| $  \\ $ /$  /$$$   /$$$  /$ /$$$$
-| $$$$/| $ /$__  $ /$__  $| $| $__  $
-| $____/ | $| $  \\ $| $  \\ $| $| $  \\ $
-| $      | $| $  | $| $  | $| $| $  | $
-| $      | $| $$$$/| $$$$/| $| $  | $
-|__/      |__/| $____/ | $____/ |__/|__/  |__/
-              | $      | $
-              | $      | $
+const PIPPIN_LOGO: &str = r#"/$$$$$$$  /$$                     /$$
+| $$__  $$|__/                    |__/
+| $$  \ $$ /$$  /$$$$$$   /$$$$$$  /$$ /$$$$$$$
+| $$$$$$$/| $$ /$$__  $$ /$$__  $$| $$| $$__  $$
+| $$____/ | $$| $$  \ $$| $$  \ $$| $$| $$  \ $$
+| $$      | $$| $$  | $$| $$  | $$| $$| $$  | $$
+| $$      | $$| $$$$$$$/| $$$$$$$/| $$| $$  | $$
+|__/      |__/| $$____/ | $$____/ |__/|__/  |__/
+              | $$      | $$
+              | $$      | $$
               |__/      |__/"#;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -48,6 +48,16 @@ impl Theme {
             Theme::Ice => "\x1b[36m",
         }
     }
+
+    fn vga_attribute(self) -> u8 {
+        match self {
+            Theme::Classic => 0x1f, // bright white on blue
+            Theme::Amber => 0x06,   // amber/brown on black
+            Theme::Green => 0x0a,   // bright green on black
+            Theme::Ice => 0x0b,     // bright cyan on black
+            Theme::Mono => 0x07,    // light gray on black
+        }
+    }
 }
 
 pub struct Terminal {
@@ -62,6 +72,14 @@ impl Terminal {
     }
 
     fn set_screen_enabled(&mut self, enabled: bool) { self.screen_enabled = enabled; }
+
+    fn set_vga_attribute(&mut self, attribute: u8) {
+        if let Some(screen) = &mut self.screen { screen.set_attribute(attribute); }
+    }
+
+    fn write_serial_ansi(&mut self, ansi: &str) {
+        let _ = serial::stdout().write_str(ansi);
+    }
 
     fn clear(&mut self) {
         if self.screen_enabled {
@@ -125,19 +143,19 @@ impl Shell {
     }
 
     fn prompt(&mut self) {
-        let _ = self.terminal.write_str(self.theme.ansi());
+        self.terminal.write_serial_ansi(self.theme.ansi());
         let _ = self.terminal.write_str("pippin> ");
     }
 
     fn print_logo(&mut self) {
-        let _ = self.terminal.write_str(self.theme.ansi());
+        self.terminal.write_serial_ansi(self.theme.ansi());
         let _ = writeln!(self.terminal, "{}", PIPPIN_LOGO);
-        let _ = self.terminal.write_str("\x1b[0m");
+        self.terminal.write_serial_ansi("\x1b[0m");
     }
 
     fn print_help(&mut self) {
         let _ = writeln!(self.terminal, "Pippin CLI");
-        let _ = writeln!(self.terminal, "  System:     fetch  uname  uptime  mem  pci  about");
+        let _ = writeln!(self.terminal, "  System:     fetch  uname  uptime  mem  pci  about  shutdown  poweroff  reboot");
         let _ = writeln!(self.terminal, "  Files:      ls  cat  echo");
         let _ = writeln!(self.terminal, "  Apps:       apps  run");
         let _ = writeln!(self.terminal, "  Desktop:    desktop  console");
@@ -156,9 +174,10 @@ impl Shell {
         };
         if let Some(theme) = theme {
             self.theme = theme;
-            let _ = self.terminal.write_str(self.theme.ansi());
+            self.terminal.set_vga_attribute(theme.vga_attribute());
+            self.terminal.write_serial_ansi(theme.ansi());
             let _ = writeln!(self.terminal, "Theme set to {}.", self.theme.name());
-            let _ = self.terminal.write_str("\x1b[0m");
+            self.terminal.write_serial_ansi("\x1b[0m");
         } else {
             let _ = writeln!(self.terminal, "theme: unknown theme '{}'", name);
         }
@@ -405,6 +424,14 @@ impl Shell {
             }
             "fetch" | "neofetch" => self.fetch(),
             "clear" => self.terminal.clear(),
+            "shutdown" | "poweroff" => {
+                let _ = writeln!(self.terminal, "Powering off Pippin...");
+                poweroff();
+            }
+            "reboot" => {
+                let _ = writeln!(self.terminal, "Rebooting Pippin...");
+                reboot();
+            }
             "uname" => { let _ = writeln!(self.terminal, "Pippin OS 0.1.0 x86_64"); }
             "uptime" => {
                 let ticks = interrupts::ticks();
@@ -501,4 +528,25 @@ fn key_pair(scan: u8) -> Option<(u8, u8)> {
         0x34 => (b'.', b'>'), 0x35 => (b'/', b'?'), 0x39 => (b' ', b' '),
         _ => return None,
     })
+}
+
+
+/// QEMU/Bochs power control used until the full ACPI S5 path lands.
+/// QEMU's isa-debug-exit device is configured by scripts/run-qemu.sh.
+fn poweroff() -> ! {
+    unsafe { crate::cpu::outb(0x501, 0x00); }
+    loop { unsafe { core::arch::asm!("cli; hlt"); } }
+}
+
+fn reboot() -> ! {
+    // Reset through the legacy 8042 controller, which QEMU emulates and which
+    // also works on a broad range of PC-compatible hardware.
+    unsafe {
+        for _ in 0..100_000 {
+            if crate::cpu::inb(0x64) & 0x02 == 0 { break; }
+            core::hint::spin_loop();
+        }
+        crate::cpu::outb(0x64, 0xfe);
+    }
+    loop { unsafe { core::arch::asm!("cli; hlt"); } }
 }
